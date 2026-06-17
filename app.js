@@ -8,6 +8,10 @@
 
   const ASSET_TYPES = ["소모품", "장비"];
   const BULK_IMPORT_PASSWORD = "5802";
+  const DEFAULT_SUPABASE_CONFIG = {
+    supabaseUrl: "https://eqqydboscpvijvscjzbc.supabase.co",
+    supabaseKey: "sb_publishable_4BVX7XCBUC3n8rgU-keZUg_A7mUvwkZ",
+  };
 
   const REQUIRED_COLUMNS = [
     "분류",
@@ -123,8 +127,9 @@
   const state = {
     products: loadJson(STORAGE_KEYS.products, defaultProducts),
     records: loadJson(STORAGE_KEYS.records, sampleRecords),
-    settings: loadJson(STORAGE_KEYS.settings, { supabaseUrl: "", supabaseKey: "" }),
+    settings: normalizeSettings(loadJson(STORAGE_KEYS.settings, {})),
     activeAssetType: localStorage.getItem(STORAGE_KEYS.activeAssetType) || "소모품",
+    adminUnlocked: false,
     bulkImportUnlocked: false,
     importPreview: [],
     supabaseClient: null,
@@ -147,6 +152,7 @@
     hydrateSettings();
     refreshAll();
     initIcons();
+    setTimeout(() => loadFromSupabase({ silent: true }), 700);
   }
 
   function hydrateLegacyData() {
@@ -219,6 +225,19 @@
     }
   }
 
+  function normalizeSettings(settings) {
+    return {
+      supabaseUrl: settings?.supabaseUrl || DEFAULT_SUPABASE_CONFIG.supabaseUrl,
+      supabaseKey: settings?.supabaseKey || DEFAULT_SUPABASE_CONFIG.supabaseKey,
+    };
+  }
+
+  function requireAdminWrite(actionLabel) {
+    if (state.adminUnlocked) return true;
+    toast(`관리자 비밀번호 확인 후 ${actionLabel}할 수 있습니다.`);
+    return false;
+  }
+
   function setDefaultDates() {
     const today = toDateInput(new Date());
     const deliveryInput = $('[name="deliveryDate"]');
@@ -247,6 +266,7 @@
 
     $("#deliveryForm").addEventListener("submit", async (event) => {
       event.preventDefault();
+      if (!requireAdminWrite("단건 입력")) return;
       const form = new FormData(event.currentTarget);
       const record = normalizeRecord(Object.fromEntries(form.entries()));
       if (!record.expiryDate) {
@@ -263,6 +283,7 @@
 
     $("#productForm").addEventListener("submit", async (event) => {
       event.preventDefault();
+      if (!requireAdminWrite("제품 묶음 추가")) return;
       const form = new FormData(event.currentTarget);
       const name = String(form.get("name") || "").trim();
       if (!name) return;
@@ -374,6 +395,7 @@
   }
 
   function setBulkLockState(unlocked) {
+    state.adminUnlocked = unlocked;
     state.bulkImportUnlocked = unlocked;
     const fileInput = $("#bulkFileInput");
     const dropZone = $("#dropZone");
@@ -391,7 +413,9 @@
       oldIcon.replaceWith(newIcon);
     }
     dropZone.querySelector("strong").textContent = unlocked ? "파일을 선택하거나 끌어놓기" : "비밀번호 입력 후 파일 선택";
-    lockMessage.textContent = unlocked ? "대량 입력이 열렸습니다. 파일을 선택하거나 끌어놓을 수 있습니다." : "비밀번호 확인 후 파일을 넣을 수 있습니다.";
+    lockMessage.textContent = unlocked
+      ? "관리자 작업이 열렸습니다. 파일 업로드와 온라인 저장이 가능합니다."
+      : "비밀번호 확인 후 파일 업로드와 온라인 저장이 가능합니다.";
     renderImportPreview();
     initIcons();
   }
@@ -476,6 +500,7 @@
   }
 
   async function syncWithSupabase() {
+    if (!requireAdminWrite("온라인 저장")) return;
     configureSupabase();
     if (!state.supabaseClient) {
       toast("Supabase URL과 Anon Key를 먼저 입력해 주세요.");
@@ -511,10 +536,11 @@
     }
   }
 
-  async function loadFromSupabase() {
+  async function loadFromSupabase(options = {}) {
+    const silent = Boolean(options.silent);
     configureSupabase();
     if (!state.supabaseClient) {
-      toast("Supabase URL과 Anon Key를 먼저 입력해 주세요.");
+      if (!silent) toast("Supabase URL과 Anon Key를 먼저 입력해 주세요.");
       return;
     }
 
@@ -527,9 +553,9 @@
       state.records = (data || []).map(recordFromSupabase);
       saveJson(STORAGE_KEYS.records, state.records);
       refreshAll();
-      toast(`온라인 데이터 ${state.records.length.toLocaleString("ko-KR")}건을 불러왔습니다.`);
+      if (!silent) toast(`온라인 데이터 ${state.records.length.toLocaleString("ko-KR")}건을 불러왔습니다.`);
     } catch (error) {
-      toast("온라인 데이터를 불러오지 못했습니다. 설정과 테이블을 확인해 주세요.");
+      if (!silent) toast("온라인 데이터를 불러오지 못했습니다. 설정과 테이블을 확인해 주세요.");
     }
   }
 
