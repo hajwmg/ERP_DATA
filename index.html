@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>납품 유효기간 관리</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script defer src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="./app.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand-block">
+          <div class="brand-mark" aria-hidden="true">M</div>
+          <div>
+            <h1>납품 유효기간 관리</h1>
+            <p>제품군 기준 납품, LOT, 만료일 분석</p>
+          </div>
+        </div>
+
+        <div class="asset-switch" aria-label="분류 전환">
+          <button class="asset-mode-button active" type="button" data-asset-mode="소모품">
+            <i data-lucide="package"></i><span>소모품</span>
+          </button>
+          <button class="asset-mode-button" type="button" data-asset-mode="장비">
+            <i data-lucide="cpu"></i><span>장비</span>
+          </button>
+        </div>
+
+        <nav class="nav-tabs" aria-label="주요 메뉴">
+          <button class="tab-button active" type="button" data-view="dashboard">
+            <i data-lucide="layout-dashboard"></i><span>현황</span>
+          </button>
+          <button class="tab-button" type="button" data-view="entry">
+            <i data-lucide="square-pen"></i><span>단건 입력</span>
+          </button>
+          <button class="tab-button" type="button" data-view="bulk">
+            <i data-lucide="file-spreadsheet"></i><span>대량 입력</span>
+          </button>
+          <button class="tab-button" type="button" data-view="analysis">
+            <i data-lucide="chart-no-axes-combined"></i><span>분석하기</span>
+          </button>
+          <button class="tab-button" type="button" data-view="products">
+            <i data-lucide="boxes"></i><span>제품 묶음</span>
+          </button>
+          <button class="tab-button" type="button" data-view="settings">
+            <i data-lucide="database"></i><span>온라인 저장</span>
+          </button>
+        </nav>
+
+        <div class="storage-state" id="storageState">
+          <span class="state-dot"></span>
+          <span>로컬 저장 사용 중</span>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <section class="view active" id="dashboard-view">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">Inventory & delivery</p>
+              <h2>납품/유효기간 현황</h2>
+              <p class="mode-copy" id="dashboardModeCopy">소모품 데이터 기준</p>
+            </div>
+            <div class="header-actions">
+              <button class="secondary-button" type="button" id="exportJsonButton">
+                <i data-lucide="download"></i><span>백업</span>
+              </button>
+              <label class="secondary-button file-button" for="restoreJsonInput">
+                <i data-lucide="upload"></i><span>복원</span>
+              </label>
+              <input id="restoreJsonInput" type="file" accept=".json,application/json" hidden />
+            </div>
+          </header>
+
+          <div class="kpi-grid" id="kpiGrid"></div>
+
+          <div class="content-band two-column">
+            <section class="panel">
+              <div class="panel-header">
+                <h3>만료/교환 우선 확인</h3>
+                <span class="muted-text">유효기간 90일 이내 또는 만료</span>
+              </div>
+              <div class="table-wrap compact">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>상태</th>
+                      <th>병원</th>
+                      <th>대표제품</th>
+                      <th>세부</th>
+                      <th>LOT</th>
+                      <th>만료일</th>
+                    </tr>
+                  </thead>
+                  <tbody id="expiryTableBody"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <h3>최근 납품</h3>
+                <span class="muted-text">최근 등록순 8건</span>
+              </div>
+              <div class="record-list" id="recentRecords"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="entry-view">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">Single entry</p>
+              <h2>단건 납품 입력</h2>
+              <p class="mode-copy" id="entryModeCopy">소모품 데이터로 등록</p>
+            </div>
+          </header>
+
+          <form class="entry-grid" id="deliveryForm">
+            <label>
+              <span>분류</span>
+              <select name="assetType" id="assetTypeSelect" required>
+                <option value="소모품">소모품</option>
+                <option value="장비">장비</option>
+              </select>
+            </label>
+            <label>
+              <span>관리유형</span>
+              <select name="eventType" required>
+                <option value="신규납품">신규납품</option>
+                <option value="교환">교환</option>
+                <option value="회수">회수</option>
+                <option value="샘플/데모">샘플/데모</option>
+              </select>
+            </label>
+            <label>
+              <span>납품일</span>
+              <input name="deliveryDate" type="date" required />
+            </label>
+            <label>
+              <span>병원명</span>
+              <input name="hospital" type="text" placeholder="예: ○○대학교병원" required />
+            </label>
+            <label>
+              <span>대표제품명</span>
+              <select name="productGroup" id="productGroupSelect" required></select>
+            </label>
+            <label>
+              <span>담당자명</span>
+              <input name="managerName" type="text" placeholder="입력 담당자" />
+            </label>
+            <label>
+              <span>연결그룹</span>
+              <input name="relationGroup" id="relationGroupInput" type="text" list="relationGroupOptions" placeholder="선택 입력" />
+            </label>
+            <label class="span-2">
+              <span>세부모델/규격</span>
+              <input name="productDetail" type="text" placeholder="예: MG-BC-0601E-03, 풍선확장기 포함, 옵션 차이 등" />
+            </label>
+            <label>
+              <span>품목코드</span>
+              <input name="itemCode" type="text" placeholder="선택 입력" />
+            </label>
+            <label>
+              <span>수량</span>
+              <input name="quantity" type="number" min="-9999" step="1" value="1" required />
+            </label>
+            <label>
+              <span>단가</span>
+              <input name="unitPrice" type="number" min="0" step="1" placeholder="원 단위" required />
+            </label>
+            <label>
+              <span>LOT 번호</span>
+              <input name="lotNumber" type="text" placeholder="LOT 또는 Serial" />
+            </label>
+            <label>
+              <span>유효기간 만료일</span>
+              <input name="expiryDate" type="date" />
+            </label>
+            <label>
+              <span>넣은 시점</span>
+              <input name="registeredAt" type="date" />
+            </label>
+            <label class="span-2">
+              <span>기타작성칸</span>
+              <textarea name="memo" rows="4" placeholder="모델 세부 차이, 교환 사유, 거래명세서 확인 여부 등을 적어두세요."></textarea>
+            </label>
+            <div class="form-actions span-2">
+              <button class="ghost-button" type="reset">초기화</button>
+              <button class="primary-button" type="submit">
+                <i data-lucide="plus"></i><span>데이터 추가</span>
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section class="view" id="bulk-view">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">Bulk import</p>
+              <h2>엑셀형 대량 입력</h2>
+            </div>
+            <div class="header-actions">
+              <button class="secondary-button small-button" type="button" id="exportAllDataButton">
+                <i data-lucide="download"></i><span>현재 데이터</span>
+              </button>
+              <button class="secondary-button" type="button" id="downloadTemplateButton">
+                <i data-lucide="file-down"></i><span>양식 다운로드</span>
+              </button>
+            </div>
+          </header>
+
+          <div class="content-band two-column">
+            <section class="panel">
+              <div class="panel-header">
+                <h3>파일 가져오기</h3>
+                <span class="muted-text">xlsx, xls, csv 지원</span>
+              </div>
+              <div class="bulk-lock">
+                <label>
+                  <span>대량 입력 비밀번호</span>
+                  <input id="bulkPasswordInput" type="password" inputmode="numeric" placeholder="비밀번호 입력" autocomplete="off" />
+                </label>
+                <button class="secondary-button" type="button" id="unlockBulkButton">
+                  <i data-lucide="lock-keyhole"></i><span>열기</span>
+                </button>
+                <p id="bulkLockMessage">비밀번호 확인 후 파일을 넣을 수 있습니다.</p>
+              </div>
+              <label class="drop-zone" for="bulkFileInput" id="dropZone">
+                <i data-lucide="lock"></i>
+                <strong>비밀번호 입력 후 파일 선택</strong>
+                <span>대표제품명은 큰 묶음, 세부모델/규격은 기타작성칸처럼 구분합니다.</span>
+              </label>
+              <input id="bulkFileInput" type="file" accept=".xlsx,.xls,.csv,text/csv" hidden disabled />
+              <div class="import-actions">
+                <button class="primary-button" type="button" id="applyImportButton" disabled>
+                  <i data-lucide="check"></i><span>미리보기 적용</span>
+                </button>
+                <button class="ghost-button" type="button" id="clearPreviewButton" disabled>미리보기 지우기</button>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <h3>필수 컬럼</h3>
+                <span class="muted-text">컬럼명은 그대로 사용</span>
+              </div>
+              <div class="column-chips" id="requiredColumns"></div>
+            </section>
+          </div>
+
+          <section class="panel full-width">
+            <div class="panel-header">
+              <h3>가져오기 미리보기</h3>
+              <span class="muted-text" id="previewSummary">대기 중</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>결과</th>
+                    <th>분류</th>
+                    <th>납품일</th>
+                    <th>병원명</th>
+                    <th>담당자</th>
+                    <th>연결그룹</th>
+                    <th>대표제품명</th>
+                    <th>세부모델/규격</th>
+                    <th>수량</th>
+                    <th>단가</th>
+                    <th>LOT</th>
+                    <th>만료일</th>
+                  </tr>
+                </thead>
+                <tbody id="importPreviewBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="analysis-view">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">Analysis</p>
+              <h2>분석하기</h2>
+              <p class="mode-copy" id="analysisModeCopy">소모품 데이터 기준, 장비 연결 이력 포함</p>
+            </div>
+            <button class="secondary-button" type="button" id="printReportButton">
+              <i data-lucide="printer"></i><span>1장 보고서 인쇄</span>
+            </button>
+          </header>
+
+          <div class="analysis-controls">
+            <label>
+              <span>보고서 기준</span>
+              <select id="reportTypeSelect">
+                <option value="price">1. 제품별 단가 확인</option>
+                <option value="prediction">2. 병원 납품 시기 예측</option>
+                <option value="last">3. 마지막 납품+유효기간+단가</option>
+              </select>
+            </label>
+            <label>
+              <span>병원 필터</span>
+              <input id="hospitalFilter" type="search" placeholder="전체" />
+            </label>
+            <label>
+              <span>제품 필터</span>
+              <select id="analysisProductFilter">
+                <option value="">전체</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="analysis-grid">
+            <section class="panel">
+              <div class="panel-header">
+                <h3>제품별 단가 확인</h3>
+                <span class="muted-text">대표제품 기준</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>대표제품</th>
+                      <th>최근 단가</th>
+                      <th>평균 단가</th>
+                      <th>최저</th>
+                      <th>최고</th>
+                      <th>건수</th>
+                    </tr>
+                  </thead>
+                  <tbody id="priceAnalysisBody"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <h3>병원 납품 시기 예측</h3>
+                <span class="muted-text">평균 납품 간격 기반</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>병원</th>
+                      <th>대표제품</th>
+                      <th>마지막 납품</th>
+                      <th>평균 간격</th>
+                      <th>예상 다음 납품</th>
+                    </tr>
+                  </thead>
+                  <tbody id="predictionAnalysisBody"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel full-width">
+              <div class="panel-header">
+                <h3>마지막 납품+유효기간+단가</h3>
+                <span class="muted-text">병원/대표제품별 최신 기준</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>상태</th>
+                      <th>병원</th>
+                      <th>대표제품</th>
+                      <th>연결그룹</th>
+                      <th>세부모델/규격</th>
+                      <th>마지막 납품</th>
+                      <th>유효기간</th>
+                      <th>단가</th>
+                      <th>담당자</th>
+                      <th>LOT</th>
+                    </tr>
+                  </thead>
+                  <tbody id="lastDeliveryBody"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel full-width">
+              <div class="panel-header">
+                <h3 id="linkedHistoryTitle">연결 장비 이력</h3>
+                <span class="muted-text" id="linkedHistoryCaption">같은 병원 기준으로 연결</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>병원</th>
+                      <th>연결분류</th>
+                      <th>연결그룹</th>
+                      <th>대표제품</th>
+                      <th>세부모델/규격</th>
+                      <th>납품일</th>
+                      <th>수량</th>
+                      <th>단가</th>
+                      <th>담당자</th>
+                      <th>LOT</th>
+                    </tr>
+                  </thead>
+                  <tbody id="linkedHistoryBody"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="products-view">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">Product grouping</p>
+              <h2>대표제품 묶음 관리</h2>
+            </div>
+          </header>
+
+          <form class="product-form" id="productForm">
+            <label>
+              <span>분류</span>
+              <select name="assetType" id="productAssetTypeSelect" required>
+                <option value="소모품">소모품</option>
+                <option value="장비">장비</option>
+              </select>
+            </label>
+            <label>
+              <span>대표제품명</span>
+              <input name="name" type="text" placeholder="예: 나빌룬E" required />
+            </label>
+            <label>
+              <span>기본 유효기간</span>
+              <input name="shelfLifeMonths" type="number" min="0" step="1" placeholder="개월" />
+            </label>
+            <label>
+              <span>표시 색상</span>
+              <input name="color" type="color" value="#287c6f" />
+            </label>
+            <label>
+              <span>기본 연결그룹</span>
+              <input name="relationGroup" type="text" list="relationGroupOptions" placeholder="선택 입력" />
+            </label>
+            <button class="primary-button" type="submit">
+              <i data-lucide="plus"></i><span>제품 묶음 추가</span>
+            </button>
+          </form>
+
+          <div class="product-split-grid">
+            <section class="panel">
+              <div class="panel-header">
+                <h3>소모품 묶음</h3>
+                <span class="muted-text" id="consumableProductCount">0개</span>
+              </div>
+              <div class="product-list" id="consumableProductList"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-header">
+                <h3>장비 묶음</h3>
+                <span class="muted-text" id="equipmentProductCount">0개</span>
+              </div>
+              <div class="product-list" id="equipmentProductList"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="settings-view">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">Online storage</p>
+              <h2>온라인 저장 설정</h2>
+            </div>
+          </header>
+
+          <section class="panel settings-panel">
+            <div class="panel-header">
+              <h3>Supabase 연결</h3>
+              <span class="muted-text">GitHub Pages 배포 시 데이터 저장소 역할</span>
+            </div>
+            <div class="settings-grid">
+              <label>
+                <span>Project URL</span>
+                <input id="supabaseUrl" type="url" placeholder="https://xxxx.supabase.co" />
+              </label>
+              <label>
+                <span>Anon Key</span>
+                <input id="supabaseKey" type="password" placeholder="Supabase anon public key" />
+              </label>
+            </div>
+            <div class="form-actions">
+              <button class="secondary-button" type="button" id="saveSettingsButton">
+                <i data-lucide="save"></i><span>설정 저장</span>
+              </button>
+              <button class="primary-button" type="button" id="syncButton">
+                <i data-lucide="cloud-upload"></i><span>온라인 저장</span>
+              </button>
+              <button class="secondary-button" type="button" id="loadOnlineButton">
+                <i data-lucide="cloud-download"></i><span>온라인 불러오기</span>
+              </button>
+            </div>
+            <p class="settings-note">
+              GitHub는 이 폴더의 화면 파일을 올려 사이트 주소를 만드는 곳이고, Supabase는 병원/제품/LOT 납품 데이터를 계속 보관하는 곳입니다.
+              이 프로젝트 폴더를 GitHub에 올린 뒤 GitHub Pages로 열고, Supabase 테이블은 함께 만든 <code>supabase-schema.sql</code> 기준으로 생성하면 됩니다.
+              현재 버튼은 로컬에 입력된 데이터를 온라인 테이블로 올리는 동기화 기능입니다.
+            </p>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <section class="report-page" id="reportPage" aria-label="인쇄 보고서">
+      <div class="report-sheet">
+        <header class="report-header">
+          <div>
+            <p id="reportDate">-</p>
+            <h2 id="reportTitle">납품 분석 보고서</h2>
+          </div>
+          <strong>1 Page Report</strong>
+        </header>
+        <div class="report-kpis" id="reportKpis"></div>
+        <div class="report-body" id="reportBody"></div>
+        <footer class="report-footer">
+          <span>대표제품명은 큰 묶음 기준이며, 세부모델/규격과 LOT는 상세 구분값으로 관리합니다.</span>
+          <span id="reportGeneratedAt"></span>
+        </footer>
+      </div>
+    </section>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <datalist id="relationGroupOptions"></datalist>
+  </body>
+</html>
