@@ -365,6 +365,46 @@ button svg,
   width: min(360px, 100%);
 }
 
+.focus-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -4px 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7faf8;
+}
+
+.check-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #2e4444;
+  cursor: pointer;
+}
+
+.check-control input {
+  width: 18px;
+  min-height: 18px;
+  accent-color: var(--teal);
+  cursor: pointer;
+}
+
+.check-control span {
+  color: inherit;
+  font-size: inherit;
+}
+
+.analysis-check {
+  align-self: end;
+  padding-bottom: 3px;
+}
+
 .muted-text {
   color: var(--muted);
   font-size: 12px;

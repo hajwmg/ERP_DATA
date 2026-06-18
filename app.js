@@ -4,6 +4,7 @@
     products: "delivery-expiry-products-v1",
     settings: "delivery-expiry-settings-v1",
     activeAssetType: "delivery-expiry-active-asset-type-v1",
+    mainAccountsOnly: "delivery-expiry-main-accounts-only-v1",
   };
 
   const ASSET_TYPES = ["소모품", "장비"];
@@ -101,6 +102,33 @@
     "아주대 의료원",
     "아주대학교병원",
   ];
+  const MAIN_ACCOUNT_KEYWORDS = [
+    ...PREPAID_PRIORITY_KEYWORDS,
+    "대학",
+    "대학교",
+    "대학병원",
+    "의과대학",
+    "의료원",
+    "부속병원",
+    "서울대",
+    "서울대학교",
+    "아산병원",
+    "삼성서울",
+    "성모병원",
+    "세브란스",
+    "고대구로",
+    "고대안산",
+    "건국대",
+    "한양대",
+    "한림대",
+    "원광대",
+    "순천향",
+    "아주대",
+    "충남대",
+    "보라매",
+    "백병원",
+    "공단",
+  ];
 
   const defaultProducts = [
     { id: "naviband", name: "나비밴드", assetType: "소모품", relationGroup: "비강 소모품군", shelfLifeMonths: 36, color: "#287c6f" },
@@ -110,6 +138,8 @@
     { id: "navilloon", name: "나빌룬", assetType: "소모품", relationGroup: "비강/이관 시술군", shelfLifeMonths: 36, color: "#4f8b8f" },
     { id: "eustacure-tip", name: "유스타큐어 팁", assetType: "소모품", relationGroup: "이관기능검사군", shelfLifeMonths: 36, color: "#8b6f4f" },
     { id: "eustacure", name: "유스타큐어", assetType: "장비", relationGroup: "이관기능검사군", shelfLifeMonths: 0, color: "#6c5a86" },
+    { id: "eustachian-function-tester", name: "이관기능검사기", assetType: "장비", relationGroup: "이관기능검사군", shelfLifeMonths: 0, color: "#5d7896" },
+    { id: "net-navigation-naviol", name: "NET-NAVIGATION (나비올)", assetType: "장비", relationGroup: "네비게이션 장비군", shelfLifeMonths: 0, color: "#5f7561" },
     { id: "etc-consumable", name: "기타 소모품", assetType: "소모품", relationGroup: "", shelfLifeMonths: 36, color: "#6f7c80" },
     { id: "etc-equipment", name: "기타 장비", assetType: "장비", relationGroup: "", shelfLifeMonths: 0, color: "#8a6f53" },
   ];
@@ -208,6 +238,7 @@
     supabaseClient: null,
     editingRecordId: "",
     recordSearch: "",
+    mainAccountsOnly: localStorage.getItem(STORAGE_KEYS.mainAccountsOnly) !== "false",
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -221,6 +252,7 @@
     bindAssetMode();
     bindTabs();
     bindForms();
+    bindMainAccountFilters();
     bindBulkImport();
     bindAnalysisControls();
     bindStorageActions();
@@ -446,6 +478,24 @@
       syncModeControls();
       refreshAll();
       toast("대표제품 묶음이 추가되었습니다.");
+    });
+  }
+
+  function bindMainAccountFilters() {
+    syncMainAccountControls();
+    $$(".main-account-toggle").forEach((checkbox) => {
+      checkbox.addEventListener("change", (event) => {
+        state.mainAccountsOnly = event.target.checked;
+        localStorage.setItem(STORAGE_KEYS.mainAccountsOnly, String(state.mainAccountsOnly));
+        syncMainAccountControls();
+        refreshAll();
+      });
+    });
+  }
+
+  function syncMainAccountControls() {
+    $$(".main-account-toggle").forEach((checkbox) => {
+      checkbox.checked = state.mainAccountsOnly;
     });
   }
 
@@ -686,18 +736,31 @@
     }
 
     try {
-      const { data, error } = await state.supabaseClient
-        .from("delivery_records")
-        .select("*")
-        .order("delivery_date", { ascending: false });
-      if (error) throw error;
-      state.records = (data || []).map(recordFromSupabase);
+      const data = await fetchAllSupabaseRecords();
+      state.records = data.map(recordFromSupabase);
       saveJson(STORAGE_KEYS.records, state.records);
       refreshAll();
       if (!silent) toast(`온라인 데이터 ${state.records.length.toLocaleString("ko-KR")}건을 불러왔습니다.`);
     } catch (error) {
       if (!silent) toast("온라인 데이터를 불러오지 못했습니다. 설정과 테이블을 확인해 주세요.");
     }
+  }
+
+  async function fetchAllSupabaseRecords() {
+    const pageSize = 1000;
+    const allRows = [];
+    for (let from = 0; ; from += pageSize) {
+      const to = from + pageSize - 1;
+      const { data, error } = await state.supabaseClient
+        .from("delivery_records")
+        .select("*")
+        .order("delivery_date", { ascending: false })
+        .range(from, to);
+      if (error) throw error;
+      allRows.push(...(data || []));
+      if (!data || data.length < pageSize) break;
+    }
+    return allRows;
   }
 
   function recordFromSupabase(row) {
@@ -734,19 +797,39 @@
   }
 
   function renderProductOptions(entryAssetType = $("#assetTypeSelect")?.value || state.activeAssetType) {
-    const entryProducts = state.products.filter((product) => getProductAssetType(product) === entryAssetType);
+    const entryProducts = getProductsForAssetType(entryAssetType);
     const options = entryProducts
       .map((product) => `<option value="${escapeHtml(product.name)}">${escapeHtml(product.name)}</option>`)
       .join("");
     $("#productGroupSelect").innerHTML = options;
 
-    const analysisOptions = state.products
-      .filter((product) => getProductAssetType(product) === state.activeAssetType)
+    const analysisOptions = getProductsForAssetType(state.activeAssetType)
       .map((product) => `<option value="${escapeHtml(product.name)}">${escapeHtml(product.name)}</option>`)
       .join("");
     $("#analysisProductFilter").innerHTML = `<option value="">전체</option>${analysisOptions}`;
     renderRelationGroupOptions();
     fillRelationGroupFromProduct();
+  }
+
+  function getProductsForAssetType(assetType) {
+    const products = new Map();
+    state.products
+      .filter((product) => getProductAssetType(product) === assetType)
+      .forEach((product) => products.set(product.name, product));
+    state.records
+      .filter((record) => getRecordAssetType(record) === assetType)
+      .forEach((record) => {
+        if (!record.productGroup || products.has(record.productGroup)) return;
+        products.set(record.productGroup, {
+          id: slugify(record.productGroup),
+          name: record.productGroup,
+          assetType,
+          relationGroup: record.relationGroup || "",
+          shelfLifeMonths: assetType === "소모품" ? 36 : 0,
+          color: "#6f7c80",
+        });
+      });
+    return [...products.values()].sort((a, b) => a.name.localeCompare(b.name, "ko"));
   }
 
   function renderRelationGroupOptions() {
@@ -1446,7 +1529,9 @@
   }
 
   function getScopedRecords(assetType = state.activeAssetType) {
-    return state.records.filter((record) => getRecordAssetType(record) === assetType);
+    return state.records
+      .filter((record) => getRecordAssetType(record) === assetType)
+      .filter((record) => !state.mainAccountsOnly || isMainAccountRecord(record));
   }
 
   function getOppositeAssetType(assetType = state.activeAssetType) {
@@ -1491,15 +1576,16 @@
 
   function normalizeRecord(input) {
     const now = new Date().toISOString();
+    const productGroup = normalizeProductGroupName(input.productGroup);
     return {
       id: input.id || cryptoId(),
-      assetType: normalizeAssetType(input.assetType || inferAssetType(input.productGroup)),
+      assetType: normalizeAssetType(input.assetType || inferAssetType(productGroup)),
       eventType: String(input.eventType || "신규납품").trim(),
       deliveryDate: normalizeDate(input.deliveryDate),
       hospital: String(input.hospital || "").trim(),
       managerName: String(input.managerName || "").trim(),
-      relationGroup: String(input.relationGroup || getProductRelationGroup(input.productGroup) || "").trim(),
-      productGroup: String(input.productGroup || "").trim(),
+      relationGroup: String(input.relationGroup || getProductRelationGroup(productGroup) || "").trim(),
+      productGroup,
       productDetail: String(input.productDetail || "").trim(),
       itemCode: String(input.itemCode || "").trim(),
       quantity: numberValue(input.quantity),
@@ -1588,6 +1674,20 @@
   function isPrepaidPriorityTarget(record) {
     const text = normalizeSearchText([record.hospital, record.relationGroup, record.memo].join(" "));
     return PREPAID_PRIORITY_KEYWORDS.some((keyword) => text.includes(normalizeSearchText(keyword)));
+  }
+
+  function isMainAccountRecord(record) {
+    const text = normalizeSearchText([record.hospital, record.relationGroup, record.memo].join(" "));
+    return MAIN_ACCOUNT_KEYWORDS.some((keyword) => text.includes(normalizeSearchText(keyword)));
+  }
+
+  function normalizeProductGroupName(value) {
+    const text = String(value || "").trim();
+    const upper = text.toUpperCase();
+    if (upper.includes("NET-NAVIGATION") || upper.includes("NAVIOL") || text.includes("나비올")) {
+      return "NET-NAVIGATION (나비올)";
+    }
+    return text;
   }
 
   function recordSearchText(record) {
