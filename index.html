@@ -82,7 +82,7 @@
             <section class="panel">
               <div class="panel-header">
                 <h3>만료/교환 우선 확인</h3>
-                <span class="muted-text">유효기간 90일 이내 또는 만료</span>
+                <span class="muted-text">최근 1년·미정산·선납관리 대상만 표시</span>
               </div>
               <div class="table-wrap compact">
                 <table>
@@ -109,6 +109,36 @@
               <div class="record-list" id="recentRecords"></div>
             </section>
           </div>
+
+          <section class="panel full-width">
+            <div class="panel-header">
+              <div>
+                <h3>데이터 수정/삭제</h3>
+                <span class="muted-text">병원명, 제품, LOT, 메모로 검색</span>
+              </div>
+              <input class="panel-search" id="recordSearchInput" type="search" placeholder="예: 테스트이비인후과, 삼성서울병원, LOT" />
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>납품일</th>
+                    <th>병원명</th>
+                    <th>분류</th>
+                    <th>대표제품</th>
+                    <th>수량</th>
+                    <th>단가</th>
+                    <th>LOT</th>
+                    <th>만료일</th>
+                    <th>회계일자</th>
+                    <th>관리</th>
+                  </tr>
+                </thead>
+                <tbody id="recordManageBody"></tbody>
+              </table>
+            </div>
+            <p class="muted-text" id="recordManageSummary"></p>
+          </section>
         </section>
 
         <section class="view" id="entry-view">
@@ -182,6 +212,10 @@
               <input name="expiryDate" type="date" />
             </label>
             <label>
+              <span>회계일자</span>
+              <input name="accountingDate" type="date" />
+            </label>
+            <label>
               <span>넣은 시점</span>
               <input name="registeredAt" type="date" />
             </label>
@@ -192,7 +226,7 @@
             <div class="form-actions span-2">
               <button class="ghost-button" type="reset">초기화</button>
               <button class="primary-button" type="submit">
-                <i data-lucide="plus"></i><span>데이터 추가</span>
+                <i data-lucide="plus"></i><span id="entrySubmitLabel">데이터 추가</span>
               </button>
             </div>
           </form>

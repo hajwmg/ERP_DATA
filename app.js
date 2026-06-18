@@ -8,6 +8,9 @@
 
   const ASSET_TYPES = ["소모품", "장비"];
   const BULK_IMPORT_PASSWORD = "5802";
+  const EXPIRY_WARNING_DAYS = 90;
+  const PRIORITY_DELIVERY_DAYS = 365;
+  const RECENT_DELIVERY_DAYS = 365;
   const DEFAULT_SUPABASE_CONFIG = {
     supabaseUrl: "https://eqqydboscpvijvscjzbc.supabase.co",
     supabaseKey: "sb_publishable_4BVX7XCBUC3n8rgU-keZUg_A7mUvwkZ",
@@ -26,18 +29,88 @@
     "단가",
     "LOT번호",
     "유효기간만료일",
+    "회계일자",
     "넣은시점",
     "품목코드",
     "기타작성칸",
   ];
   const EXPORT_COLUMNS = [...REQUIRED_COLUMNS, "데이터ID", "입력일", "수정일"];
+  const PREPAID_PRIORITY_KEYWORDS = [
+    "토탈메디칼",
+    "노원을지대병원",
+    "의정부을지대병원",
+    "이지메디컴",
+    "서울대학교병원",
+    "서울대병원",
+    "서울아산병원",
+    "강원대학교병원",
+    "강원대병원",
+    "분당서울대병원",
+    "분당서울대학교병원",
+    "에비슨케어",
+    "연세의료용품",
+    "세브란스",
+    "강남세브란스",
+    "용인세브란스",
+    "신촌세브란스",
+    "원주세브란스",
+    "세브란스 공급망관리",
+    "스마트엠케어",
+    "고대구로",
+    "고대안산",
+    "안산센터",
+    "케어캠프",
+    "건국대병원",
+    "건국대학교병원",
+    "삼성서울병원",
+    "한양대 구리병원",
+    "한양대학교 구리병원",
+    "한림대학교 동탄성심",
+    "한림대학교 강남성심",
+    "디에스비",
+    "원광대학교",
+    "원광대학교병원",
+    "동하메디칼",
+    "서울순천향병원",
+    "순천향대학교 서울병원",
+    "안연케어",
+    "오페라살루따리스",
+    "여의도성모병원",
+    "서울성모병원",
+    "은평성모병원",
+    "삼성의료원",
+    "아산사회재단",
+    "강릉아산병원",
+    "국민건강보험공단 일산병원",
+    "일산병원",
+    "위더스메디",
+    "일산백병원",
+    "상계백병원",
+    "BPS",
+    "보라매병원",
+    "서울특별시 보라매병원",
+    "HLS",
+    "충남대학교",
+    "충남대학교병원",
+    "분당제생병원",
+    "오륜메디칼",
+    "메디굿파트너스",
+    "케어메디팜",
+    "화홍병원",
+    "아주대학교",
+    "아주대 의료원",
+    "아주대학교병원",
+  ];
 
   const defaultProducts = [
-    { id: "navilloon-e", name: "나빌룬E", assetType: "소모품", relationGroup: "비강/이관 시술군", shelfLifeMonths: 24, color: "#287c6f" },
-    { id: "naviol", name: "나비올", assetType: "소모품", relationGroup: "비강/이관 시술군", shelfLifeMonths: 24, color: "#376fa3" },
-    { id: "ear-sprint", name: "이어스프린트", assetType: "소모품", relationGroup: "이어스프린트 사용군", shelfLifeMonths: 18, color: "#b76b22" },
-    { id: "eustachian-tester", name: "이관기능검사기", assetType: "장비", relationGroup: "비강/이관 시술군", shelfLifeMonths: 36, color: "#6c5a86" },
-    { id: "etc-consumable", name: "기타 소모품", assetType: "소모품", relationGroup: "", shelfLifeMonths: 0, color: "#6f7c80" },
+    { id: "naviband", name: "나비밴드", assetType: "소모품", relationGroup: "비강 소모품군", shelfLifeMonths: 36, color: "#287c6f" },
+    { id: "navifix", name: "나비픽스", assetType: "소모품", relationGroup: "비강 소모품군", shelfLifeMonths: 36, color: "#376fa3" },
+    { id: "nasal-splint", name: "나잘스프린트", assetType: "소모품", relationGroup: "비강 소모품군", shelfLifeMonths: 36, color: "#b76b22" },
+    { id: "nasal-dressing", name: "나잘드레싱", assetType: "소모품", relationGroup: "비강 소모품군", shelfLifeMonths: 36, color: "#6b8f47" },
+    { id: "navilloon", name: "나빌룬", assetType: "소모품", relationGroup: "비강/이관 시술군", shelfLifeMonths: 36, color: "#4f8b8f" },
+    { id: "eustacure-tip", name: "유스타큐어 팁", assetType: "소모품", relationGroup: "이관기능검사군", shelfLifeMonths: 36, color: "#8b6f4f" },
+    { id: "eustacure", name: "유스타큐어", assetType: "장비", relationGroup: "이관기능검사군", shelfLifeMonths: 0, color: "#6c5a86" },
+    { id: "etc-consumable", name: "기타 소모품", assetType: "소모품", relationGroup: "", shelfLifeMonths: 36, color: "#6f7c80" },
     { id: "etc-equipment", name: "기타 장비", assetType: "장비", relationGroup: "", shelfLifeMonths: 0, color: "#8a6f53" },
   ];
 
@@ -133,6 +206,8 @@
     bulkImportUnlocked: false,
     importPreview: [],
     supabaseClient: null,
+    editingRecordId: "",
+    recordSearch: "",
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -157,6 +232,21 @@
 
   function hydrateLegacyData() {
     let changedProducts = false;
+    defaultProducts.forEach((defaultProduct) => {
+      const existingProduct = state.products.find((product) => product.name === defaultProduct.name || product.id === defaultProduct.id);
+      if (!existingProduct) {
+        state.products.push({ ...defaultProduct });
+        changedProducts = true;
+        return;
+      }
+      ["assetType", "relationGroup", "shelfLifeMonths"].forEach((key) => {
+        if (existingProduct[key] !== defaultProduct[key]) {
+          existingProduct[key] = defaultProduct[key];
+          changedProducts = true;
+        }
+      });
+    });
+
     state.products = state.products.map((product) => {
       const nextProduct = { ...product };
       if (!nextProduct.assetType) {
@@ -165,6 +255,10 @@
       }
       if (typeof nextProduct.relationGroup === "undefined") {
         nextProduct.relationGroup = "";
+        changedProducts = true;
+      }
+      if (getProductAssetType(nextProduct) === "소모품" && Number(nextProduct.shelfLifeMonths || 0) !== 36) {
+        nextProduct.shelfLifeMonths = 36;
         changedProducts = true;
       }
       return nextProduct;
@@ -211,12 +305,19 @@
     });
     const opposite = getOppositeAssetType();
     $("#dashboardModeCopy").textContent = `${state.activeAssetType} 데이터 기준`;
-    $("#entryModeCopy").textContent = `${state.activeAssetType} 데이터로 등록`;
     $("#analysisModeCopy").textContent = `${state.activeAssetType} 데이터 기준, ${opposite} 연결 이력 포함`;
     const entryType = $("#assetTypeSelect");
     const productType = $("#productAssetTypeSelect");
     if (entryType) entryType.value = state.activeAssetType;
     if (productType) productType.value = state.activeAssetType;
+    refreshEntryMode();
+  }
+
+  function refreshEntryMode() {
+    const label = $("#entrySubmitLabel");
+    const copy = $("#entryModeCopy");
+    if (label) label.textContent = state.editingRecordId ? "수정 저장" : "데이터 추가";
+    if (copy) copy.textContent = state.editingRecordId ? "선택한 데이터 수정 중" : `${state.activeAssetType} 데이터로 등록`;
   }
 
   function initIcons() {
@@ -266,19 +367,43 @@
 
     $("#deliveryForm").addEventListener("submit", async (event) => {
       event.preventDefault();
-      if (!requireAdminWrite("단건 입력")) return;
+      if (!requireAdminWrite(state.editingRecordId ? "데이터 수정" : "단건 입력")) return;
       const form = new FormData(event.currentTarget);
       const record = normalizeRecord(Object.fromEntries(form.entries()));
       if (!record.expiryDate) {
         record.expiryDate = calculateDefaultExpiry(record.productGroup, record.deliveryDate);
       }
-      state.records.unshift(record);
+      const wasEditing = Boolean(state.editingRecordId);
+      if (wasEditing) {
+        record.id = state.editingRecordId;
+        const existing = state.records.find((item) => item.id === state.editingRecordId);
+        record.createdAt = existing?.createdAt || record.createdAt;
+        record.updatedAt = new Date().toISOString();
+        state.records = state.records.map((item) => (item.id === state.editingRecordId ? record : item));
+      } else {
+        state.records.unshift(record);
+      }
       await persistRecords();
       event.currentTarget.reset();
+      state.editingRecordId = "";
       setDefaultDates();
       syncModeControls();
       refreshAll();
-      toast("납품 데이터가 추가되었습니다.");
+      toast(wasEditing ? "납품 데이터를 수정했습니다." : "납품 데이터가 추가되었습니다.");
+    });
+
+    $("#deliveryForm").addEventListener("reset", () => {
+      state.editingRecordId = "";
+      setTimeout(() => {
+        setDefaultDates();
+        syncModeControls();
+        refreshEntryMode();
+      }, 0);
+    });
+
+    $("#recordSearchInput").addEventListener("input", (event) => {
+      state.recordSearch = event.target.value;
+      renderRecordManager();
     });
 
     $("#productForm").addEventListener("submit", async (event) => {
@@ -523,6 +648,7 @@
         unit_price: record.unitPrice,
         lot_number: record.lotNumber || "",
         expiry_date: record.expiryDate || null,
+        accounting_date: record.accountingDate || null,
         registered_at: record.registeredAt || null,
         memo: record.memo || "",
         created_at: record.createdAt,
@@ -575,6 +701,7 @@
       unitPrice: row.unit_price,
       lotNumber: row.lot_number,
       expiryDate: row.expiry_date,
+      accountingDate: row.accounting_date,
       registeredAt: row.registered_at,
       memo: row.memo,
       createdAt: row.created_at,
@@ -626,13 +753,14 @@
     const scopedRecords = getScopedRecords();
     const positiveRecords = scopedRecords.filter((record) => record.quantity > 0);
     const hospitals = new Set(scopedRecords.map((record) => record.hospital).filter(Boolean));
-    const expiring = getExpiringRecords(90, scopedRecords);
+    const expiring = getPriorityExpiryRecords(scopedRecords);
+    const recentRecords = getRecentDeliveryRecords(scopedRecords).slice(0, 8);
     const totalAmount = positiveRecords.reduce((sum, record) => sum + record.quantity * record.unitPrice, 0);
 
     $("#kpiGrid").innerHTML = [
       kpiCard(`${state.activeAssetType} 납품 이력`, `${scopedRecords.length.toLocaleString("ko-KR")}건`, "교환/회수 포함"),
       kpiCard("관리 병원", `${hospitals.size.toLocaleString("ko-KR")}곳`, "병원명 기준"),
-      kpiCard("90일 이내 만료", `${expiring.length.toLocaleString("ko-KR")}건`, "LOT별 확인 필요"),
+      kpiCard("우선 확인", `${expiring.length.toLocaleString("ko-KR")}건`, "최근 1년·미정산·선납관리"),
       kpiCard("누적 금액", formatMoney(totalAmount), "수량 x 단가"),
     ].join("");
 
@@ -651,11 +779,10 @@
             `,
           )
           .join("")
-      : emptyRow(6, "90일 이내 만료 또는 교환 우선 확인 대상이 없습니다.");
+      : emptyRow(6, "최근 1년·미정산·선납관리 기준의 만료/교환 우선 확인 대상이 없습니다.");
 
-    $("#recentRecords").innerHTML = scopedRecords.slice(0, 8).length
-      ? scopedRecords
-          .slice(0, 8)
+    $("#recentRecords").innerHTML = recentRecords.length
+      ? recentRecords
           .map(
             (record) => `
               <article class="record-item">
@@ -667,12 +794,136 @@
                   <span>${Number(record.quantity).toLocaleString("ko-KR")}개</span>
                   <span>${formatMoney(record.unitPrice)}</span>
                   <span>LOT ${escapeHtml(record.lotNumber || "-")}</span>
+                  <span>회계 ${formatDate(record.accountingDate)}</span>
                 </div>
+                ${recordActionButtons(record.id)}
               </article>
             `,
           )
           .join("")
-      : `<p class="muted-text">아직 등록된 납품 데이터가 없습니다.</p>`;
+      : `<p class="muted-text">최근 1년 기준으로 표시할 납품 데이터가 없습니다.</p>`;
+    renderRecordManager();
+    bindRecordActionButtons();
+  }
+
+  function renderRecordManager() {
+    const tbody = $("#recordManageBody");
+    if (!tbody) return;
+    const query = normalizeSearchText(state.recordSearch);
+    const filtered = getScopedRecords()
+      .filter((record) => !query || normalizeSearchText(recordSearchText(record)).includes(query))
+      .sort((a, b) => dateNumber(b.deliveryDate) - dateNumber(a.deliveryDate));
+    const visible = filtered.slice(0, 60);
+    tbody.innerHTML = visible.length
+      ? visible
+          .map(
+            (record) => `
+              <tr>
+                <td>${formatDate(record.deliveryDate)}</td>
+                <td>${escapeHtml(record.hospital)}</td>
+                <td>${escapeHtml(getRecordAssetType(record))}</td>
+                <td>${productChip(record.productGroup)}</td>
+                <td>${Number(record.quantity || 0).toLocaleString("ko-KR")}</td>
+                <td>${formatMoney(record.unitPrice)}</td>
+                <td>${escapeHtml(record.lotNumber || "-")}</td>
+                <td>${formatDate(record.expiryDate)}</td>
+                <td>${formatDate(record.accountingDate)}</td>
+                <td>${recordActionButtons(record.id)}</td>
+              </tr>
+            `,
+          )
+          .join("")
+      : emptyRow(10, "검색 조건에 맞는 데이터가 없습니다.");
+    $("#recordManageSummary").textContent = filtered.length
+      ? `${filtered.length.toLocaleString("ko-KR")}건 중 ${visible.length.toLocaleString("ko-KR")}건 표시`
+      : "표시할 데이터 없음";
+  }
+
+  function recordActionButtons(recordId) {
+    return `
+      <div class="row-actions">
+        <button class="icon-button" type="button" title="수정" aria-label="데이터 수정" data-edit-record="${escapeHtml(recordId)}">
+          <i data-lucide="square-pen"></i>
+        </button>
+        <button class="icon-button danger-button" type="button" title="삭제" aria-label="데이터 삭제" data-delete-record="${escapeHtml(recordId)}">
+          <i data-lucide="trash-2"></i>
+        </button>
+      </div>
+    `;
+  }
+
+  function bindRecordActionButtons() {
+    $$("[data-edit-record]").forEach((button) => {
+      button.addEventListener("click", () => startEditRecord(button.dataset.editRecord));
+    });
+    $$("[data-delete-record]").forEach((button) => {
+      button.addEventListener("click", () => deleteRecord(button.dataset.deleteRecord));
+    });
+    initIcons();
+  }
+
+  function startEditRecord(recordId) {
+    if (!requireAdminWrite("데이터 수정")) return;
+    const record = state.records.find((item) => item.id === recordId);
+    if (!record) {
+      toast("수정할 데이터를 찾지 못했습니다.");
+      return;
+    }
+    state.editingRecordId = record.id;
+    const form = $("#deliveryForm");
+    form.assetType.value = getRecordAssetType(record);
+    renderProductOptions(form.assetType.value);
+    form.eventType.value = record.eventType || "신규납품";
+    form.deliveryDate.value = record.deliveryDate || "";
+    form.hospital.value = record.hospital || "";
+    form.productGroup.value = record.productGroup || "";
+    form.managerName.value = record.managerName || "";
+    form.relationGroup.value = record.relationGroup || "";
+    form.productDetail.value = record.productDetail || "";
+    form.itemCode.value = record.itemCode || "";
+    form.quantity.value = Number(record.quantity || 0);
+    form.unitPrice.value = Number(record.unitPrice || 0);
+    form.lotNumber.value = record.lotNumber || "";
+    form.expiryDate.value = record.expiryDate || "";
+    form.accountingDate.value = record.accountingDate || "";
+    form.registeredAt.value = record.registeredAt || "";
+    form.memo.value = record.memo || "";
+    refreshEntryMode();
+    showView("entry");
+    form.hospital.focus();
+    toast("선택한 데이터를 수정 화면으로 불러왔습니다.");
+  }
+
+  async function deleteRecord(recordId) {
+    if (!requireAdminWrite("데이터 삭제")) return;
+    const record = state.records.find((item) => item.id === recordId);
+    if (!record) {
+      toast("삭제할 데이터를 찾지 못했습니다.");
+      return;
+    }
+    const ok = window.confirm(`${record.hospital} / ${record.productGroup} 데이터를 삭제할까요?`);
+    if (!ok) return;
+    state.records = state.records.filter((item) => item.id !== recordId);
+    await persistRecords();
+    await deleteRecordFromSupabase(recordId);
+    refreshAll();
+    toast("데이터를 삭제했습니다.");
+  }
+
+  async function deleteRecordFromSupabase(recordId) {
+    configureSupabase();
+    if (!state.supabaseClient) return;
+    try {
+      const { error } = await state.supabaseClient.from("delivery_records").delete().eq("id", recordId);
+      if (error) throw error;
+    } catch (error) {
+      toast("로컬에서는 삭제했지만 온라인 삭제는 확인이 필요합니다.");
+    }
+  }
+
+  function showView(viewName) {
+    $$(".tab-button").forEach((item) => item.classList.toggle("active", item.dataset.view === viewName));
+    $$(".view").forEach((view) => view.classList.toggle("active", view.id === `${viewName}-view`));
   }
 
   function renderAnalysis() {
@@ -1056,6 +1307,7 @@
       unitPrice: row["단가"],
       lotNumber: row["LOT번호"],
       expiryDate: normalizeDate(row["유효기간만료일"]),
+      accountingDate: normalizeDate(row["회계일자"] || row["회계전표일자"] || row["회계전표일자-No."]),
       registeredAt: normalizeDate(row["넣은시점"]),
       itemCode: row["품목코드"],
       memo: row["기타작성칸"],
@@ -1077,7 +1329,7 @@
         name: record.productGroup,
         assetType: record.assetType,
         relationGroup: record.relationGroup || "",
-        shelfLifeMonths: 0,
+        shelfLifeMonths: record.assetType === "소모품" ? 36 : 0,
         color: "#6f7c80",
       });
       persistProducts();
@@ -1106,6 +1358,7 @@
         "550000",
         "LOT-예시-001",
         addDays(toDateInput(new Date()), 730),
+        "",
         toDateInput(new Date()),
         "ITEM-CODE",
         "모델 차이, 교환 사유, 확인 메모",
@@ -1155,6 +1408,7 @@
       단가: record.unitPrice ?? "",
       LOT번호: record.lotNumber || "",
       유효기간만료일: record.expiryDate || "",
+      회계일자: record.accountingDate || "",
       넣은시점: record.registeredAt || "",
       품목코드: record.itemCode || "",
       기타작성칸: record.memo || "",
@@ -1235,6 +1489,7 @@
       unitPrice: numberValue(input.unitPrice),
       lotNumber: String(input.lotNumber || "").trim(),
       expiryDate: normalizeDate(input.expiryDate),
+      accountingDate: normalizeDate(input.accountingDate),
       registeredAt: normalizeDate(input.registeredAt),
       memo: String(input.memo || "").trim(),
       createdAt: input.createdAt || now,
@@ -1258,6 +1513,28 @@
     saveJson(STORAGE_KEYS.products, state.products);
   }
 
+  function getPriorityExpiryRecords(records = getScopedRecords()) {
+    return records
+      .filter((record) => {
+        const status = expiryStatus(record.expiryDate, EXPIRY_WARNING_DAYS);
+        return (
+          (status.type === "expired" || status.type === "warning") &&
+          record.quantity > 0 &&
+          record.eventType === "신규납품" &&
+          isWithinDays(record.deliveryDate, PRIORITY_DELIVERY_DAYS) &&
+          !hasAccountingDate(record) &&
+          isPrepaidPriorityTarget(record)
+        );
+      })
+      .sort((a, b) => dateNumber(a.expiryDate || "2999-12-31") - dateNumber(b.expiryDate || "2999-12-31"));
+  }
+
+  function getRecentDeliveryRecords(records = getScopedRecords()) {
+    return records
+      .filter((record) => record.quantity > 0 && isWithinDays(record.deliveryDate, RECENT_DELIVERY_DAYS))
+      .sort((a, b) => dateNumber(b.deliveryDate) - dateNumber(a.deliveryDate));
+  }
+
   function getExpiringRecords(days, records = getScopedRecords()) {
     return records
       .filter((record) => {
@@ -1279,6 +1556,45 @@
     const status = expiryStatus(dateValue);
     const className = status.type === "expired" ? "status-expired" : status.type === "warning" ? "status-warning" : "status-ok";
     return `<span class="status-pill ${className}">${escapeHtml(status.label)}</span>`;
+  }
+
+  function hasAccountingDate(record) {
+    return Boolean(record.accountingDate);
+  }
+
+  function isWithinDays(dateValue, days) {
+    if (!dateValue) return false;
+    const age = dayDiff(dateValue, toDateInput(new Date()));
+    return age >= 0 && age <= days;
+  }
+
+  function isPrepaidPriorityTarget(record) {
+    const text = normalizeSearchText([record.hospital, record.relationGroup, record.memo].join(" "));
+    return PREPAID_PRIORITY_KEYWORDS.some((keyword) => text.includes(normalizeSearchText(keyword)));
+  }
+
+  function recordSearchText(record) {
+    return [
+      record.hospital,
+      record.assetType,
+      record.eventType,
+      record.managerName,
+      record.relationGroup,
+      record.productGroup,
+      record.productDetail,
+      record.itemCode,
+      record.lotNumber,
+      record.expiryDate,
+      record.accountingDate,
+      record.memo,
+    ].join(" ");
+  }
+
+  function normalizeSearchText(value) {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/\s+/g, "")
+      .replace(/주식회사|[㈜()]/g, "");
   }
 
   function productChip(productGroup) {

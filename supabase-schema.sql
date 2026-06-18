@@ -13,6 +13,7 @@ create table if not exists public.delivery_records (
   unit_price numeric not null default 0,
   lot_number text default '',
   expiry_date date,
+  accounting_date date,
   registered_at date,
   memo text default '',
   created_at timestamptz default now(),
@@ -27,6 +28,9 @@ alter table public.delivery_records
 
 alter table public.delivery_records
   add column if not exists relation_group text default '';
+
+alter table public.delivery_records
+  add column if not exists accounting_date date;
 
 create index if not exists delivery_records_hospital_idx
   on public.delivery_records (hospital);
@@ -46,20 +50,32 @@ create index if not exists delivery_records_delivery_date_idx
 create index if not exists delivery_records_expiry_date_idx
   on public.delivery_records (expiry_date);
 
+create index if not exists delivery_records_accounting_date_idx
+  on public.delivery_records (accounting_date);
+
 alter table public.delivery_records enable row level security;
 
+drop policy if exists "delivery_records_select" on public.delivery_records;
 create policy "delivery_records_select"
   on public.delivery_records
   for select
   using (true);
 
+drop policy if exists "delivery_records_insert" on public.delivery_records;
 create policy "delivery_records_insert"
   on public.delivery_records
   for insert
   with check (true);
 
+drop policy if exists "delivery_records_update" on public.delivery_records;
 create policy "delivery_records_update"
   on public.delivery_records
   for update
   using (true)
   with check (true);
+
+drop policy if exists "delivery_records_delete" on public.delivery_records;
+create policy "delivery_records_delete"
+  on public.delivery_records
+  for delete
+  using (true);

@@ -361,6 +361,10 @@ button svg,
   font-size: 17px;
 }
 
+.panel-search {
+  width: min(360px, 100%);
+}
+
 .muted-text {
   color: var(--muted);
   font-size: 12px;
@@ -456,6 +460,11 @@ tr:last-child td {
 
 .record-item strong {
   font-size: 14px;
+}
+
+.row-actions {
+  display: inline-flex;
+  gap: 6px;
 }
 
 .record-meta {
@@ -650,6 +659,10 @@ textarea {
   border-radius: 8px;
   background: #ffffff;
   color: var(--muted);
+}
+
+.danger-button {
+  color: var(--red);
 }
 
 .settings-panel {
