@@ -12,6 +12,8 @@
   const EXPIRY_WARNING_DAYS = 90;
   const PRIORITY_DELIVERY_DAYS = 365;
   const RECENT_DELIVERY_DAYS = 365;
+  const RECENT_ANALYSIS_DAYS = 183;
+  const ANALYSIS_TOP_LIMIT = 6;
   const DEFAULT_SUPABASE_CONFIG = {
     supabaseUrl: "https://eqqydboscpvijvscjzbc.supabase.co",
     supabaseKey: "sb_publishable_4BVX7XCBUC3n8rgU-keZUg_A7mUvwkZ",
@@ -1028,10 +1030,42 @@
 
   function renderAnalysis() {
     const filtered = getFilteredRecords();
+    renderAnalysisSnapshot(filtered);
     renderPriceAnalysis(filtered);
     renderPredictionAnalysis(filtered);
     renderLastDeliveryAnalysis(filtered);
     renderLinkedHistory(filtered);
+  }
+
+  function renderAnalysisSnapshot(records) {
+    const recent = getRecentAnalysisRecords(records);
+    const amount = recent.reduce((sum, record) => sum + recordAmount(record), 0);
+    const customers = new Set(recent.map((record) => record.hospital).filter(Boolean));
+    const topCustomer = getTopGroupedRows(recent, (record) => record.hospital, ANALYSIS_TOP_LIMIT)[0];
+    const topProduct = getTopGroupedRows(recent, (record) => record.productGroup, ANALYSIS_TOP_LIMIT)[0];
+    const fromDate = addDays(toDateInput(new Date()), -RECENT_ANALYSIS_DAYS);
+
+    $("#analysisPeriodLabel").textContent = `${fromDate} ~ ${toDateInput(new Date())}`;
+    $("#analysisSummaryCards").innerHTML = [
+      snapshotMetric("최근 6개월 건수", `${recent.length.toLocaleString("ko-KR")}건`, `${customers.size.toLocaleString("ko-KR")}개 거래처`),
+      snapshotMetric("누적 금액", formatMoney(amount), "수량 x 단가"),
+      snapshotMetric("평균 단가", formatMoney(average(recent.map((record) => record.unitPrice).filter((price) => price > 0))), "단가 입력 건 기준"),
+      snapshotMetric("최다 거래처", topCustomer ? topCustomer.label : "-", topCustomer ? `${topCustomer.count.toLocaleString("ko-KR")}건` : "데이터 없음"),
+      snapshotMetric("최다 제품", topProduct ? topProduct.label : "-", topProduct ? `${topProduct.count.toLocaleString("ko-KR")}건` : "데이터 없음"),
+    ].join("");
+
+    renderHorizontalBars(
+      "#topHospitalChart",
+      getTopGroupedRows(recent, (record) => record.hospital, ANALYSIS_TOP_LIMIT),
+      "최근 6개월 기준 표시할 병원/간납사 데이터가 없습니다.",
+    );
+    renderHorizontalBars(
+      "#productVolumeChart",
+      getTopGroupedRows(recent, (record) => record.productGroup, ANALYSIS_TOP_LIMIT),
+      "최근 6개월 기준 표시할 제품 데이터가 없습니다.",
+      true,
+    );
+    renderMonthlyTrend(recent);
   }
 
   function renderPriceAnalysis(records) {
@@ -1040,16 +1074,22 @@
       .map(([productGroup, items]) => {
         const sorted = [...items].sort((a, b) => dateNumber(b.deliveryDate) - dateNumber(a.deliveryDate));
         const prices = items.map((item) => item.unitPrice).filter((price) => price > 0);
+        const latest = sorted[0];
+        const min = Math.min(...prices);
+        const max = Math.max(...prices);
         return {
           productGroup,
-          latest: sorted[0]?.unitPrice || 0,
+          latest: latest?.unitPrice || 0,
           avg: average(prices),
-          min: Math.min(...prices),
-          max: Math.max(...prices),
+          min,
+          max,
+          spread: max - min,
           count: prices.length,
+          latestHospital: latest?.hospital || "-",
+          latestDate: latest?.deliveryDate || "",
         };
       })
-      .sort((a, b) => a.productGroup.localeCompare(b.productGroup, "ko"));
+      .sort((a, b) => b.count - a.count || a.productGroup.localeCompare(b.productGroup, "ko"));
 
     $("#priceAnalysisBody").innerHTML = rows.length
       ? rows
@@ -1061,12 +1101,15 @@
                 <td>${formatMoney(row.avg)}</td>
                 <td>${formatMoney(row.min)}</td>
                 <td>${formatMoney(row.max)}</td>
+                <td>${formatMoney(row.spread)}</td>
                 <td>${row.count.toLocaleString("ko-KR")}</td>
+                <td>${escapeHtml(row.latestHospital)}</td>
+                <td>${formatDate(row.latestDate)}</td>
               </tr>
             `,
           )
           .join("")
-      : emptyRow(6, "단가 분석에 사용할 데이터가 없습니다.");
+      : emptyRow(9, "단가 분석에 사용할 데이터가 없습니다.");
   }
 
   function renderPredictionAnalysis(records) {
@@ -1638,6 +1681,109 @@
       .sort((a, b) => dateNumber(b.deliveryDate) - dateNumber(a.deliveryDate));
   }
 
+  function getRecentAnalysisRecords(records) {
+    return records.filter((record) => record.quantity > 0 && record.deliveryDate && isWithinDays(record.deliveryDate, RECENT_ANALYSIS_DAYS));
+  }
+
+  function snapshotMetric(label, value, helper) {
+    return `<article class="snapshot-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(helper)}</small></article>`;
+  }
+
+  function getTopGroupedRows(records, keyFn, limit = ANALYSIS_TOP_LIMIT) {
+    const grouped = groupBy(records, keyFn);
+    return Object.entries(grouped)
+      .map(([label, items]) => ({
+        label: label || "-",
+        count: items.length,
+        quantity: items.reduce((sum, record) => sum + Number(record.quantity || 0), 0),
+        amount: items.reduce((sum, record) => sum + recordAmount(record), 0),
+      }))
+      .filter((row) => row.label && row.label !== "-")
+      .sort((a, b) => b.count - a.count || b.amount - a.amount || a.label.localeCompare(b.label, "ko"))
+      .slice(0, limit);
+  }
+
+  function renderHorizontalBars(selector, rows, emptyText, showAmountFirst = false) {
+    const target = $(selector);
+    if (!target) return;
+    const max = Math.max(...rows.map((row) => row.count), 0);
+    target.innerHTML = rows.length
+      ? rows
+          .map((row) => {
+            const width = max ? Math.max(6, Math.round((row.count / max) * 100)) : 0;
+            const mainValue = showAmountFirst ? formatMoney(row.amount) : `${row.count.toLocaleString("ko-KR")}건`;
+            const helper = showAmountFirst
+              ? `${row.count.toLocaleString("ko-KR")}건 · 수량 ${row.quantity.toLocaleString("ko-KR")}`
+              : `${formatMoney(row.amount)} · 수량 ${row.quantity.toLocaleString("ko-KR")}`;
+            return `
+              <div class="bar-row">
+                <div class="bar-row-top">
+                  <strong>${escapeHtml(row.label)}</strong>
+                  <span>${escapeHtml(mainValue)}</span>
+                </div>
+                <div class="bar-track"><span style="width:${width}%"></span></div>
+                <small>${escapeHtml(helper)}</small>
+              </div>
+            `;
+          })
+          .join("")
+      : `<p class="muted-text">${escapeHtml(emptyText)}</p>`;
+  }
+
+  function renderMonthlyTrend(records) {
+    const target = $("#monthlyTrendChart");
+    if (!target) return;
+    const months = getLastMonthKeys(6);
+    const grouped = months.map((month) => {
+      const items = records.filter((record) => monthKey(record.deliveryDate) === month.key);
+      return {
+        ...month,
+        count: items.length,
+        amount: items.reduce((sum, record) => sum + recordAmount(record), 0),
+      };
+    });
+    const max = Math.max(...grouped.map((row) => row.amount), 0);
+    target.innerHTML = grouped
+      .map((row) => {
+        const height = max ? Math.max(8, Math.round((row.amount / max) * 100)) : 8;
+        return `
+          <div class="month-column">
+            <div class="month-bar-wrap">
+              <span class="month-bar" style="height:${height}%"></span>
+            </div>
+            <strong>${escapeHtml(row.label)}</strong>
+            <small>${row.count.toLocaleString("ko-KR")}건</small>
+            <em>${escapeHtml(formatCompactMoney(row.amount))}</em>
+          </div>
+        `;
+      })
+      .join("");
+  }
+
+  function getLastMonthKeys(count) {
+    const current = new Date();
+    current.setDate(1);
+    const months = [];
+    for (let index = count - 1; index >= 0; index -= 1) {
+      const value = new Date(current);
+      value.setMonth(current.getMonth() - index);
+      months.push({
+        key: `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}`,
+        label: `${value.getMonth() + 1}월`,
+      });
+    }
+    return months;
+  }
+
+  function monthKey(dateValue) {
+    const normalized = normalizeDate(dateValue);
+    return normalized ? normalized.slice(0, 7) : "";
+  }
+
+  function recordAmount(record) {
+    return Number(record.quantity || 0) * Number(record.unitPrice || 0);
+  }
+
   function getExpiringRecords(days, records = getScopedRecords()) {
     return records
       .filter((record) => {
@@ -1807,6 +1953,13 @@
   function formatMoney(value) {
     const number = Number(value || 0);
     return `${Math.round(number).toLocaleString("ko-KR")}원`;
+  }
+
+  function formatCompactMoney(value) {
+    const number = Math.round(Number(value || 0));
+    if (number >= 100000000) return `${(number / 100000000).toFixed(number >= 1000000000 ? 0 : 1)}억`;
+    if (number >= 10000) return `${Math.round(number / 10000).toLocaleString("ko-KR")}만`;
+    return `${number.toLocaleString("ko-KR")}원`;
   }
 
   function parseCsv(text) {

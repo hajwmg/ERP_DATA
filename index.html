@@ -361,11 +361,45 @@
             </label>
           </div>
 
+          <section class="analysis-overview" aria-label="최근 6개월 분석 요약">
+            <div class="overview-header">
+              <div>
+                <h3>최근 6개월 핵심 흐름</h3>
+                <span class="muted-text">현재 필터 기준으로 거래처, 제품, 월별 흐름을 요약</span>
+              </div>
+              <span class="period-pill" id="analysisPeriodLabel">최근 6개월</span>
+            </div>
+            <div class="snapshot-metrics" id="analysisSummaryCards"></div>
+            <div class="visual-grid">
+              <section class="visual-panel">
+                <div class="visual-header">
+                  <h4>판매 건수 Top 병원/간납사</h4>
+                  <span class="muted-text">건수 기준</span>
+                </div>
+                <div class="bar-list" id="topHospitalChart"></div>
+              </section>
+              <section class="visual-panel">
+                <div class="visual-header">
+                  <h4>제품별 판매 흐름</h4>
+                  <span class="muted-text">건수·금액 기준</span>
+                </div>
+                <div class="bar-list" id="productVolumeChart"></div>
+              </section>
+              <section class="visual-panel">
+                <div class="visual-header">
+                  <h4>월별 판매 추이</h4>
+                  <span class="muted-text">매출 기준</span>
+                </div>
+                <div class="month-chart" id="monthlyTrendChart"></div>
+              </section>
+            </div>
+          </section>
+
           <div class="analysis-grid">
             <section class="panel">
               <div class="panel-header">
                 <h3>제품별 단가 확인</h3>
-                <span class="muted-text">대표제품 기준</span>
+                <span class="muted-text">대표제품별 최근 거래처와 가격폭 포함</span>
               </div>
               <div class="table-wrap">
                 <table>
@@ -376,7 +410,10 @@
                       <th>평균 단가</th>
                       <th>최저</th>
                       <th>최고</th>
+                      <th>가격폭</th>
                       <th>건수</th>
+                      <th>최근 납품처</th>
+                      <th>최근 납품일</th>
                     </tr>
                   </thead>
                   <tbody id="priceAnalysisBody"></tbody>
