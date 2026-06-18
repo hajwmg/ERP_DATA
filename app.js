@@ -407,6 +407,20 @@
       bindRecordActionButtons();
     });
 
+    $("#dashboard-view").addEventListener("click", (event) => {
+      const editButton = event.target.closest("[data-edit-record]");
+      if (editButton) {
+        event.preventDefault();
+        startEditRecord(editButton.dataset.editRecord);
+        return;
+      }
+      const deleteButton = event.target.closest("[data-delete-record]");
+      if (deleteButton) {
+        event.preventDefault();
+        deleteRecord(deleteButton.dataset.deleteRecord);
+      }
+    });
+
     $("#productForm").addEventListener("submit", async (event) => {
       event.preventDefault();
       if (!requireAdminWrite("제품 묶음 추가")) return;
@@ -845,9 +859,11 @@
       <div class="row-actions">
         <button class="icon-button" type="button" title="수정" aria-label="데이터 수정" data-edit-record="${escapeHtml(recordId)}">
           <i data-lucide="square-pen"></i>
+          <span>수정</span>
         </button>
         <button class="icon-button danger-button" type="button" title="삭제" aria-label="데이터 삭제" data-delete-record="${escapeHtml(recordId)}">
           <i data-lucide="trash-2"></i>
+          <span>삭제</span>
         </button>
       </div>
     `;

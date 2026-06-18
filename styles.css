@@ -651,14 +651,20 @@ textarea {
 }
 
 .icon-button {
-  display: grid;
-  width: 36px;
+  display: inline-flex;
+  width: auto;
+  min-width: 36px;
   height: 36px;
-  place-items: center;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #ffffff;
   color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .danger-button {
