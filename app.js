@@ -404,6 +404,7 @@
     $("#recordSearchInput").addEventListener("input", (event) => {
       state.recordSearch = event.target.value;
       renderRecordManager();
+      bindRecordActionButtons();
     });
 
     $("#productForm").addEventListener("submit", async (event) => {
