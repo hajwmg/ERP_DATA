@@ -347,7 +347,7 @@
             </label>
             <label>
               <span>병원 필터</span>
-              <input id="hospitalFilter" type="search" placeholder="전체" />
+              <input id="hospitalFilter" type="search" placeholder="병원/간납사/계열 검색" />
             </label>
             <label>
               <span>제품 필터</span>
@@ -373,15 +373,15 @@
             <div class="visual-grid">
               <section class="visual-panel">
                 <div class="visual-header">
-                  <h4>판매 건수 Top 병원/간납사</h4>
-                  <span class="muted-text">건수 기준</span>
+                  <h4 id="topAccountChartTitle">판매 건수 Top 병원/간납사</h4>
+                  <span class="muted-text" id="topAccountChartCaption">건수 기준</span>
                 </div>
                 <div class="bar-list" id="topHospitalChart"></div>
               </section>
               <section class="visual-panel">
                 <div class="visual-header">
-                  <h4>제품별 판매 흐름</h4>
-                  <span class="muted-text">건수·금액 기준</span>
+                  <h4 id="productVolumeChartTitle">제품별 판매 흐름</h4>
+                  <span class="muted-text" id="productVolumeChartCaption">건수·금액 기준</span>
                 </div>
                 <div class="bar-list" id="productVolumeChart"></div>
               </section>
@@ -423,12 +423,12 @@
 
             <section class="panel">
               <div class="panel-header">
-                <h3>병원 납품 시기 예측</h3>
-                <span class="muted-text">평균 납품 간격 기반</span>
+                <h3 id="predictionAnalysisTitle">병원 납품 시기 예측</h3>
+                <span class="muted-text" id="predictionAnalysisCaption">평균 납품 간격 기반</span>
               </div>
               <div class="table-wrap">
                 <table>
-                  <thead>
+                  <thead id="predictionAnalysisHead">
                     <tr>
                       <th>병원</th>
                       <th>대표제품</th>
@@ -444,12 +444,12 @@
 
             <section class="panel full-width">
               <div class="panel-header">
-                <h3>마지막 납품+유효기간+단가</h3>
-                <span class="muted-text">병원/대표제품별 최신 기준</span>
+                <h3 id="lastDeliveryAnalysisTitle">마지막 납품+유효기간+단가</h3>
+                <span class="muted-text" id="lastDeliveryAnalysisCaption">병원/대표제품별 최신 기준</span>
               </div>
               <div class="table-wrap">
                 <table>
-                  <thead>
+                  <thead id="lastDeliveryAnalysisHead">
                     <tr>
                       <th>상태</th>
                       <th>병원</th>

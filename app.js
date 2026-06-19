@@ -131,6 +131,39 @@
     "백병원",
     "공단",
   ];
+  const ACCOUNT_ALIAS_GROUPS = [
+    {
+      label: "세브란스 계열 간납사",
+      accounts: ["에비슨케어", "안연케어", "세브란스 공급망관리"],
+      aliases: ["세브란스", "신촌세브란스", "강남세브란스", "용인세브란스", "원주세브란스", "연세의료원", "연세대", "연세대학교"],
+    },
+    {
+      label: "서울대/아산 계열 간납사",
+      accounts: ["이지메디컴"],
+      aliases: ["서울대학교병원", "서울대병원", "서울대", "서울아산병원", "강원대학교병원", "강원대병원"],
+    },
+    {
+      label: "삼성서울/삼성의료원 채널",
+      accounts: ["삼성서울병원", "삼성의료원", "케어캠프"],
+      aliases: ["삼성서울병원", "삼성서울", "삼성의료원"],
+      productHints: ["나잘스프린트", "나빌룬", "나비픽스"],
+    },
+    {
+      label: "케어캠프 주요 대학병원 채널",
+      accounts: ["케어캠프"],
+      aliases: ["건국대학교병원", "건국대병원", "한양대학교 구리병원", "한양대 구리", "한림대학교 동탄성심", "한림대학교 강남성심"],
+    },
+    {
+      label: "고대 계열 간납사",
+      accounts: ["스마트엠케어"],
+      aliases: ["고대구로", "고대안산", "고려대학교병원", "고려대", "안산센터"],
+    },
+    {
+      label: "을지 계열 간납사",
+      accounts: ["토탈메디칼"],
+      aliases: ["노원을지대병원", "의정부을지대병원", "을지대", "을지병원"],
+    },
+  ];
 
   const defaultProducts = [
     { id: "naviband", name: "나비밴드", assetType: "소모품", relationGroup: "비강 소모품군", shelfLifeMonths: 36, color: "#287c6f" },
@@ -340,11 +373,25 @@
     const opposite = getOppositeAssetType();
     $("#dashboardModeCopy").textContent = `${state.activeAssetType} 데이터 기준`;
     $("#analysisModeCopy").textContent = `${state.activeAssetType} 데이터 기준, ${opposite} 연결 이력 포함`;
+    syncAnalysisModeLabels();
     const entryType = $("#assetTypeSelect");
     const productType = $("#productAssetTypeSelect");
     if (entryType) entryType.value = state.activeAssetType;
     if (productType) productType.value = state.activeAssetType;
     refreshEntryMode();
+  }
+
+  function syncAnalysisModeLabels() {
+    const predictionOption = $('#reportTypeSelect option[value="prediction"]');
+    const lastOption = $('#reportTypeSelect option[value="last"]');
+    if (!predictionOption || !lastOption) return;
+    if (state.activeAssetType === "장비") {
+      predictionOption.textContent = "2. 장비 판매처/제품 실적";
+      lastOption.textContent = "3. 최근 장비 판매+단가";
+      return;
+    }
+    predictionOption.textContent = "2. 병원 납품 시기 예측";
+    lastOption.textContent = "3. 마지막 납품+유효기간+단가";
   }
 
   function refreshEntryMode() {
@@ -1038,30 +1085,38 @@
   }
 
   function renderAnalysisSnapshot(records) {
+    const isEquipment = state.activeAssetType === "장비";
     const recent = getRecentAnalysisRecords(records);
     const amount = recent.reduce((sum, record) => sum + recordAmount(record), 0);
-    const customers = new Set(recent.map((record) => record.hospital).filter(Boolean));
-    const topCustomer = getTopGroupedRows(recent, (record) => record.hospital, ANALYSIS_TOP_LIMIT)[0];
-    const topProduct = getTopGroupedRows(recent, (record) => record.productGroup, ANALYSIS_TOP_LIMIT)[0];
+    const customers = new Set(recent.map((record) => getAnalysisAccountLabel(record)).filter(Boolean));
+    const topCustomerRows = getTopGroupedRows(recent, (record) => getAnalysisAccountLabel(record), ANALYSIS_TOP_LIMIT, isEquipment ? "amount" : "count");
+    const topProductRows = getTopGroupedRows(recent, (record) => record.productGroup, ANALYSIS_TOP_LIMIT, isEquipment ? "amount" : "count");
+    const topCustomer = topCustomerRows[0];
+    const topProduct = topProductRows[0];
     const fromDate = addDays(toDateInput(new Date()), -RECENT_ANALYSIS_DAYS);
 
     $("#analysisPeriodLabel").textContent = `${fromDate} ~ ${toDateInput(new Date())}`;
+    $("#topAccountChartTitle").textContent = isEquipment ? "판매금액 Top 병원/간납사" : "판매 건수 Top 병원/간납사";
+    $("#topAccountChartCaption").textContent = isEquipment ? "금액 기준" : "건수 기준";
+    $("#productVolumeChartTitle").textContent = isEquipment ? "제품별 판매금액" : "제품별 판매 흐름";
+    $("#productVolumeChartCaption").textContent = isEquipment ? "금액·건수 기준" : "건수·금액 기준";
     $("#analysisSummaryCards").innerHTML = [
-      snapshotMetric("최근 6개월 건수", `${recent.length.toLocaleString("ko-KR")}건`, `${customers.size.toLocaleString("ko-KR")}개 거래처`),
-      snapshotMetric("누적 금액", formatMoney(amount), "수량 x 단가"),
+      snapshotMetric(isEquipment ? "최근 6개월 판매건" : "최근 6개월 건수", `${recent.length.toLocaleString("ko-KR")}건`, `${customers.size.toLocaleString("ko-KR")}개 거래처`),
+      snapshotMetric(isEquipment ? "판매금액" : "누적 금액", formatMoney(amount), "수량 x 단가"),
       snapshotMetric("평균 단가", formatMoney(average(recent.map((record) => record.unitPrice).filter((price) => price > 0))), "단가 입력 건 기준"),
-      snapshotMetric("최다 거래처", topCustomer ? topCustomer.label : "-", topCustomer ? `${topCustomer.count.toLocaleString("ko-KR")}건` : "데이터 없음"),
-      snapshotMetric("최다 제품", topProduct ? topProduct.label : "-", topProduct ? `${topProduct.count.toLocaleString("ko-KR")}건` : "데이터 없음"),
+      snapshotMetric(isEquipment ? "최고 판매처" : "최다 거래처", topCustomer ? topCustomer.label : "-", topCustomer ? (isEquipment ? formatMoney(topCustomer.amount) : `${topCustomer.count.toLocaleString("ko-KR")}건`) : "데이터 없음"),
+      snapshotMetric(isEquipment ? "최고 제품" : "최다 제품", topProduct ? topProduct.label : "-", topProduct ? (isEquipment ? formatMoney(topProduct.amount) : `${topProduct.count.toLocaleString("ko-KR")}건`) : "데이터 없음"),
     ].join("");
 
     renderHorizontalBars(
       "#topHospitalChart",
-      getTopGroupedRows(recent, (record) => record.hospital, ANALYSIS_TOP_LIMIT),
+      topCustomerRows,
       "최근 6개월 기준 표시할 병원/간납사 데이터가 없습니다.",
+      isEquipment,
     );
     renderHorizontalBars(
       "#productVolumeChart",
-      getTopGroupedRows(recent, (record) => record.productGroup, ANALYSIS_TOP_LIMIT),
+      topProductRows,
       "최근 6개월 기준 표시할 제품 데이터가 없습니다.",
       true,
     );
@@ -1113,6 +1168,21 @@
   }
 
   function renderPredictionAnalysis(records) {
+    if (state.activeAssetType === "장비") {
+      renderEquipmentSalesAnalysis(records);
+      return;
+    }
+    $("#predictionAnalysisTitle").textContent = "병원 납품 시기 예측";
+    $("#predictionAnalysisCaption").textContent = "평균 납품 간격 기반";
+    $("#predictionAnalysisHead").innerHTML = `
+      <tr>
+        <th>병원</th>
+        <th>대표제품</th>
+        <th>마지막 납품</th>
+        <th>평균 간격</th>
+        <th>예상 다음 납품</th>
+      </tr>
+    `;
     const grouped = groupBy(
       records.filter((record) => record.quantity > 0 && record.deliveryDate),
       (record) => `${record.hospital}|||${record.productGroup}`,
@@ -1155,7 +1225,79 @@
       : emptyRow(5, "예측에 사용할 납품 이력이 없습니다.");
   }
 
+  function renderEquipmentSalesAnalysis(records) {
+    $("#predictionAnalysisTitle").textContent = "장비 판매처/제품 실적";
+    $("#predictionAnalysisCaption").textContent = "금액 높은 장비는 재발주 예측 대신 판매 실적 기준";
+    $("#predictionAnalysisHead").innerHTML = `
+      <tr>
+        <th>판매처</th>
+        <th>대표제품</th>
+        <th>최근 납품</th>
+        <th>판매건수</th>
+        <th>평균 단가</th>
+        <th>누적 금액</th>
+      </tr>
+    `;
+    const grouped = groupBy(
+      records.filter((record) => record.quantity > 0 && record.deliveryDate && record.unitPrice > 0),
+      (record) => `${getAnalysisAccountLabel(record)}|||${record.productGroup}`,
+    );
+    const rows = Object.entries(grouped)
+      .map(([key, items]) => {
+        const [account, productGroup] = key.split("|||");
+        const latest = [...items].sort((a, b) => dateNumber(b.deliveryDate) - dateNumber(a.deliveryDate))[0];
+        const prices = items.map((item) => item.unitPrice).filter((price) => price > 0);
+        return {
+          account,
+          productGroup,
+          latestDate: latest?.deliveryDate || "",
+          count: items.length,
+          avgPrice: average(prices),
+          amount: items.reduce((sum, record) => sum + recordAmount(record), 0),
+        };
+      })
+      .sort((a, b) => b.amount - a.amount || b.count - a.count || dateNumber(b.latestDate) - dateNumber(a.latestDate))
+      .slice(0, 80);
+
+    $("#predictionAnalysisBody").innerHTML = rows.length
+      ? rows
+          .map(
+            (row) => `
+              <tr>
+                <td>${escapeHtml(row.account)}</td>
+                <td>${productChip(row.productGroup)}</td>
+                <td>${formatDate(row.latestDate)}</td>
+                <td>${row.count.toLocaleString("ko-KR")}건</td>
+                <td>${formatMoney(row.avgPrice)}</td>
+                <td>${formatMoney(row.amount)}</td>
+              </tr>
+            `,
+          )
+          .join("")
+      : emptyRow(6, "장비 판매 실적에 사용할 데이터가 없습니다.");
+  }
+
   function renderLastDeliveryAnalysis(records) {
+    if (state.activeAssetType === "장비") {
+      renderEquipmentLastSales(records);
+      return;
+    }
+    $("#lastDeliveryAnalysisTitle").textContent = "마지막 납품+유효기간+단가";
+    $("#lastDeliveryAnalysisCaption").textContent = "병원/대표제품별 최신 기준";
+    $("#lastDeliveryAnalysisHead").innerHTML = `
+      <tr>
+        <th>상태</th>
+        <th>병원</th>
+        <th>대표제품</th>
+        <th>연결그룹</th>
+        <th>세부모델/규격</th>
+        <th>마지막 납품</th>
+        <th>유효기간</th>
+        <th>단가</th>
+        <th>담당자</th>
+        <th>LOT</th>
+      </tr>
+    `;
     const grouped = groupBy(records.filter((record) => record.deliveryDate), (record) => `${record.hospital}|||${record.productGroup}`);
     const rows = Object.entries(grouped)
       .map(([key, items]) => {
@@ -1187,6 +1329,54 @@
       : emptyRow(10, "마지막 납품 분석에 사용할 데이터가 없습니다.");
   }
 
+  function renderEquipmentLastSales(records) {
+    $("#lastDeliveryAnalysisTitle").textContent = "최근 장비 판매+단가";
+    $("#lastDeliveryAnalysisCaption").textContent = "유효기간 제외, 판매처/제품별 최신 판매 기준";
+    $("#lastDeliveryAnalysisHead").innerHTML = `
+      <tr>
+        <th>판매처</th>
+        <th>대표제품</th>
+        <th>세부모델/규격</th>
+        <th>최근 납품</th>
+        <th>최근 단가</th>
+        <th>판매건수</th>
+        <th>누적 금액</th>
+        <th>담당자</th>
+        <th>Serial/LOT</th>
+      </tr>
+    `;
+    const grouped = groupBy(records.filter((record) => record.deliveryDate), (record) => `${getAnalysisAccountLabel(record)}|||${record.productGroup}`);
+    const rows = Object.entries(grouped)
+      .map(([key, items]) => {
+        const [account, productGroup] = key.split("|||");
+        const latest = [...items].sort((a, b) => dateNumber(b.deliveryDate) - dateNumber(a.deliveryDate))[0];
+        const amount = items.reduce((sum, record) => sum + recordAmount(record), 0);
+        return { account, productGroup, latest, count: items.length, amount };
+      })
+      .sort((a, b) => dateNumber(b.latest.deliveryDate) - dateNumber(a.latest.deliveryDate))
+      .slice(0, 100);
+
+    $("#lastDeliveryBody").innerHTML = rows.length
+      ? rows
+          .map(
+            (row) => `
+              <tr>
+                <td>${escapeHtml(row.account)}</td>
+                <td>${productChip(row.productGroup)}</td>
+                <td class="wrap">${escapeHtml(row.latest.productDetail || "-")}</td>
+                <td>${formatDate(row.latest.deliveryDate)}</td>
+                <td>${formatMoney(row.latest.unitPrice)}</td>
+                <td>${row.count.toLocaleString("ko-KR")}건</td>
+                <td>${formatMoney(row.amount)}</td>
+                <td>${escapeHtml(row.latest.managerName || "-")}</td>
+                <td>${escapeHtml(row.latest.lotNumber || "-")}</td>
+              </tr>
+            `,
+          )
+          .join("")
+      : emptyRow(9, "최근 장비 판매 분석에 사용할 데이터가 없습니다.");
+  }
+
   function renderLinkedHistory(baseRecords) {
     const opposite = getOppositeAssetType();
     const baseHospitals = new Set(baseRecords.map((record) => record.hospital).filter(Boolean));
@@ -1195,7 +1385,7 @@
     const linked = state.records
       .filter((record) => getRecordAssetType(record) === opposite)
       .filter((record) => {
-        if (hospitalFilter) return record.hospital.toLowerCase().includes(hospitalFilter);
+        if (hospitalFilter) return matchesHospitalSearch(record, hospitalFilter, $("#analysisProductFilter")?.value || "");
         if (baseGroups.size && record.relationGroup && baseGroups.has(record.relationGroup)) return true;
         return baseHospitals.size ? baseHospitals.has(record.hospital) : true;
       })
@@ -1274,8 +1464,8 @@
     const filtered = getFilteredRecords();
     const titles = {
       price: "제품별 단가 확인 보고서",
-      prediction: "병원 납품 시기 예측 보고서",
-      last: "마지막 납품/유효기간/단가 보고서",
+      prediction: state.activeAssetType === "장비" ? "장비 판매처/제품 실적 보고서" : "병원 납품 시기 예측 보고서",
+      last: state.activeAssetType === "장비" ? "최근 장비 판매/단가 보고서" : "마지막 납품/유효기간/단가 보고서",
     };
 
     $("#reportDate").textContent = `기준일 ${formatDate(toDateInput(new Date()))}`;
@@ -1300,9 +1490,9 @@
     if (reportType === "price") {
       $("#reportBody").innerHTML = reportPriceTable(filtered);
     } else if (reportType === "prediction") {
-      $("#reportBody").innerHTML = reportPredictionTable(filtered);
+      $("#reportBody").innerHTML = state.activeAssetType === "장비" ? reportEquipmentSalesTable(filtered) : reportPredictionTable(filtered);
     } else {
-      $("#reportBody").innerHTML = reportLastTable(filtered);
+      $("#reportBody").innerHTML = state.activeAssetType === "장비" ? reportEquipmentLastTable(filtered) : reportLastTable(filtered);
     }
   }
 
@@ -1340,6 +1530,25 @@
     return reportTable(["병원", "대표제품", "마지막 납품", "평균 간격", "예상 다음 납품"], rows);
   }
 
+  function reportEquipmentSalesTable(records) {
+    const grouped = groupBy(
+      records.filter((record) => record.quantity > 0 && record.deliveryDate && record.unitPrice > 0),
+      (record) => `${getAnalysisAccountLabel(record)}|||${record.productGroup}`,
+    );
+    const rows = Object.entries(grouped)
+      .map(([key, items]) => {
+        const [account, productGroup] = key.split("|||");
+        const latest = [...items].sort((a, b) => dateNumber(b.deliveryDate) - dateNumber(a.deliveryDate))[0];
+        const prices = items.map((item) => item.unitPrice).filter(Boolean);
+        const amount = items.reduce((sum, record) => sum + recordAmount(record), 0);
+        return { account, productGroup, latestDate: latest?.deliveryDate || "", count: items.length, avgPrice: average(prices), amount };
+      })
+      .sort((a, b) => b.amount - a.amount || b.count - a.count)
+      .slice(0, 14)
+      .map((row) => [row.account, row.productGroup, formatDate(row.latestDate), `${row.count}건`, formatMoney(row.avgPrice), formatMoney(row.amount)]);
+    return reportTable(["판매처", "대표제품", "최근 납품", "판매건수", "평균 단가", "누적 금액"], rows);
+  }
+
   function reportLastTable(records) {
     const grouped = groupBy(records.filter((record) => record.deliveryDate), (record) => `${record.hospital}|||${record.productGroup}`);
     const rows = Object.entries(grouped)
@@ -1362,6 +1571,19 @@
       })
       .slice(0, 14);
     return reportTable(["상태", "병원", "대표제품", "연결그룹", "세부", "마지막", "유효기간", "단가", "담당자", "LOT"], rows);
+  }
+
+  function reportEquipmentLastTable(records) {
+    const grouped = groupBy(records.filter((record) => record.deliveryDate), (record) => `${getAnalysisAccountLabel(record)}|||${record.productGroup}`);
+    const rows = Object.entries(grouped)
+      .map(([key, items]) => {
+        const [account, productGroup] = key.split("|||");
+        const latest = [...items].sort((a, b) => dateNumber(b.deliveryDate) - dateNumber(a.deliveryDate))[0];
+        const amount = items.reduce((sum, record) => sum + recordAmount(record), 0);
+        return [account, productGroup, latest.productDetail || "-", formatDate(latest.deliveryDate), formatMoney(latest.unitPrice), `${items.length}건`, formatMoney(amount), latest.managerName || "-"];
+      })
+      .slice(0, 14);
+    return reportTable(["판매처", "대표제품", "세부", "최근 납품", "최근 단가", "판매건수", "누적 금액", "담당자"], rows);
   }
 
   function reportTable(headers, rows) {
@@ -1562,10 +1784,10 @@
   }
 
   function getFilteredRecords() {
-    const hospital = $("#hospitalFilter")?.value.trim().toLowerCase() || "";
+    const hospital = $("#hospitalFilter")?.value.trim() || "";
     const product = $("#analysisProductFilter")?.value || "";
     return getScopedRecords().filter((record) => {
-      const hospitalMatch = !hospital || record.hospital.toLowerCase().includes(hospital);
+      const hospitalMatch = matchesHospitalSearch(record, hospital, product);
       const productMatch = !product || record.productGroup === product;
       return hospitalMatch && productMatch;
     });
@@ -1689,28 +1911,32 @@
     return `<article class="snapshot-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(helper)}</small></article>`;
   }
 
-  function getTopGroupedRows(records, keyFn, limit = ANALYSIS_TOP_LIMIT) {
+  function getTopGroupedRows(records, keyFn, limit = ANALYSIS_TOP_LIMIT, sortBy = "count") {
     const grouped = groupBy(records, keyFn);
-    return Object.entries(grouped)
+    const rows = Object.entries(grouped)
       .map(([label, items]) => ({
         label: label || "-",
         count: items.length,
         quantity: items.reduce((sum, record) => sum + Number(record.quantity || 0), 0),
         amount: items.reduce((sum, record) => sum + recordAmount(record), 0),
       }))
-      .filter((row) => row.label && row.label !== "-")
-      .sort((a, b) => b.count - a.count || b.amount - a.amount || a.label.localeCompare(b.label, "ko"))
+      .filter((row) => row.label && row.label !== "-");
+    const sortMetric = sortBy === "amount" ? "amount" : "count";
+    const secondaryMetric = sortMetric === "amount" ? "count" : "amount";
+    return rows
+      .sort((a, b) => b[sortMetric] - a[sortMetric] || b[secondaryMetric] - a[secondaryMetric] || a.label.localeCompare(b.label, "ko"))
       .slice(0, limit);
   }
 
   function renderHorizontalBars(selector, rows, emptyText, showAmountFirst = false) {
     const target = $(selector);
     if (!target) return;
-    const max = Math.max(...rows.map((row) => row.count), 0);
+    const max = Math.max(...rows.map((row) => (showAmountFirst ? row.amount : row.count)), 0);
     target.innerHTML = rows.length
       ? rows
           .map((row) => {
-            const width = max ? Math.max(6, Math.round((row.count / max) * 100)) : 0;
+            const baseValue = showAmountFirst ? row.amount : row.count;
+            const width = max ? Math.max(6, Math.round((baseValue / max) * 100)) : 0;
             const mainValue = showAmountFirst ? formatMoney(row.amount) : `${row.count.toLocaleString("ko-KR")}건`;
             const helper = showAmountFirst
               ? `${row.count.toLocaleString("ko-KR")}건 · 수량 ${row.quantity.toLocaleString("ko-KR")}`
@@ -1825,6 +2051,43 @@
   function isMainAccountRecord(record) {
     const text = normalizeSearchText([record.hospital, record.relationGroup, record.memo].join(" "));
     return MAIN_ACCOUNT_KEYWORDS.some((keyword) => text.includes(normalizeSearchText(keyword)));
+  }
+
+  function matchesHospitalSearch(record, rawQuery, selectedProduct = "") {
+    const query = normalizeSearchText(rawQuery);
+    if (!query) return true;
+    const recordText = normalizeSearchText(recordSearchText(record));
+    if (recordText.includes(query)) return true;
+    const expandedTerms = getExpandedAccountSearchTerms(rawQuery, selectedProduct || record.productGroup);
+    return expandedTerms.some((term) => recordText.includes(normalizeSearchText(term)));
+  }
+
+  function getExpandedAccountSearchTerms(rawQuery, selectedProduct = "") {
+    const query = normalizeSearchText(rawQuery);
+    if (!query) return [];
+    const product = normalizeSearchText(selectedProduct);
+    const terms = new Set();
+    ACCOUNT_ALIAS_GROUPS.forEach((group) => {
+      const groupTerms = [...group.accounts, ...group.aliases];
+      const matchesGroup = groupTerms.some((term) => normalizeSearchText(term).includes(query) || query.includes(normalizeSearchText(term)));
+      if (!matchesGroup) return;
+      if (group.productHints?.length) {
+        const productMatches = !product || group.productHints.some((hint) => product.includes(normalizeSearchText(hint)));
+        if (!productMatches) return;
+      }
+      groupTerms.forEach((term) => terms.add(term));
+    });
+    return [...terms];
+  }
+
+  function getAnalysisAccountLabel(record) {
+    const group = getAccountAliasGroup(record);
+    return group ? `${record.hospital} (${group.label})` : record.hospital;
+  }
+
+  function getAccountAliasGroup(record) {
+    const text = normalizeSearchText([record.hospital, record.relationGroup, record.memo].join(" "));
+    return ACCOUNT_ALIAS_GROUPS.find((group) => group.accounts.some((account) => text.includes(normalizeSearchText(account))));
   }
 
   function normalizeProductGroupName(value) {
