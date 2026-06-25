@@ -3,7 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>소모품 기준가 설정</title>
+    <title>가격 기준 설정 | 영업데이터 분석센터</title>
+    <meta name="description" content="제품별 기준가, 간납가, 병원·간납사별 납품 단가를 확인하고 저장하는 영업데이터 분석센터" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="가격 기준 설정 | 영업데이터 분석센터" />
+    <meta property="og:description" content="제품별 기준가와 병원·간납사별 납품 단가를 확인합니다." />
+    <meta property="og:site_name" content="영업데이터 분석센터" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="가격 기준 설정 | 영업데이터 분석센터" />
+    <meta name="twitter:description" content="제품별 기준가와 병원·간납사별 납품 단가를 확인합니다." />
     <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
     <style>
       :root {
@@ -147,7 +155,7 @@
     <header class="topbar">
       <a class="brand" href="index.html" aria-label="납품 관리로 돌아가기">
         <span class="brand-mark">M</span>
-        <span><strong>소모품 기준가 설정</strong><span>제품 기준가 · 간납가 · 병원/간납사 현황</span></span>
+        <span><strong>영업데이터 분석센터</strong><span>가격 기준 설정 · 병원/간납사 단가 현황</span></span>
       </a>
       <div class="toolbar screen-only">
         <div class="toolbar-group">
@@ -312,8 +320,8 @@
           { name: "나잘드레싱", type: "급여", benefitPrice: 12680 },
         ];
         const PRODUCT_NAMES = PRODUCTS.map((item) => item.name);
-        const DIRECT_RE = /(대학|대학교|대학병원|의료원|세브란스|삼성서울병원|서울아산병원|강릉아산병원|분당서울|서울대병원|보라매병원|성모병원|백병원|을지병원|순천향|건국대병원|아주대|원광대|충남대)/;
-        const AGENCY_RE = /(케어캠프|에비슨|안연케어|스마트엠케어|이지메디컴|공급망관리|세브란스 공급망|메디굿파트너스|토탈메디칼|오륜메디칼|아산사회재단|삼성의료원|의료용품|위더스메디|간납)/;
+        const DIRECT_RE = /(대학|대학교|대학병원|의료원|세브란스|삼성서울병원|서울아산병원|강릉아산병원|분당서울|서울대병원|보라매병원|성모병원|성빈센트|가톨릭|백병원|을지병원|순천향|건국대병원|아주대|원광대|충남대)/;
+        const AGENCY_RE = /(케어캠프|에비슨|안연케어|스마트엠케어|이지메디컴|공급망관리|세브란스 공급망|메디굿파트너스|토탈메디칼|오륜메디칼|동하메디칼|아산사회재단|삼성의료원|의료용품|위더스메디|간납)/;
         const INVALID_RE = /(샘플|무상|데모|테스트)/i;
         const money = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 });
         const number = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 });
