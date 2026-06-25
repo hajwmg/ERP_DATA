@@ -5,6 +5,11 @@
     settings: "delivery-expiry-settings-v1",
     activeAssetType: "delivery-expiry-active-asset-type-v1",
     mainAccountsOnly: "delivery-expiry-main-accounts-only-v1",
+    analysisPeriod: "delivery-expiry-analysis-period-v1",
+    analysisStartDate: "delivery-expiry-analysis-start-date-v1",
+    analysisEndDate: "delivery-expiry-analysis-end-date-v1",
+    dashboardAmountPeriod: "delivery-expiry-dashboard-amount-period-v1",
+    orderDropPeriod: "delivery-expiry-order-drop-period-v1",
   };
 
   const ASSET_TYPES = ["소모품", "장비"];
@@ -12,8 +17,9 @@
   const EXPIRY_WARNING_DAYS = 90;
   const PRIORITY_DELIVERY_DAYS = 365;
   const RECENT_DELIVERY_DAYS = 365;
-  const RECENT_ANALYSIS_DAYS = 183;
   const ANALYSIS_TOP_LIMIT = 6;
+  const ORDER_DROP_MIN_PREVIOUS_COUNT = 2;
+  const ORDER_DROP_RATIO = 0.5;
   const DEFAULT_SUPABASE_CONFIG = {
     supabaseUrl: "https://eqqydboscpvijvscjzbc.supabase.co",
     supabaseKey: "sb_publishable_4BVX7XCBUC3n8rgU-keZUg_A7mUvwkZ",
@@ -274,6 +280,11 @@
     editingRecordId: "",
     recordSearch: "",
     mainAccountsOnly: localStorage.getItem(STORAGE_KEYS.mainAccountsOnly) !== "false",
+    analysisPeriod: localStorage.getItem(STORAGE_KEYS.analysisPeriod) || "6",
+    analysisStartDate: localStorage.getItem(STORAGE_KEYS.analysisStartDate) || "",
+    analysisEndDate: localStorage.getItem(STORAGE_KEYS.analysisEndDate) || "",
+    dashboardAmountPeriod: localStorage.getItem(STORAGE_KEYS.dashboardAmountPeriod) || "6",
+    orderDropPeriod: localStorage.getItem(STORAGE_KEYS.orderDropPeriod) || "3",
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -283,6 +294,7 @@
 
   function init() {
     setDefaultDates();
+    initializeAnalysisPeriod();
     hydrateLegacyData();
     bindAssetMode();
     bindTabs();
@@ -667,6 +679,33 @@
       });
     });
 
+    $("#orderDropPeriodSelect")?.addEventListener("change", (event) => {
+      state.orderDropPeriod = event.target.value;
+      localStorage.setItem(STORAGE_KEYS.orderDropPeriod, state.orderDropPeriod);
+      renderAnalysis();
+    });
+
+    $$('[data-analysis-period]').forEach((button) => {
+      button.addEventListener("click", () => {
+        setAnalysisPeriod(button.dataset.analysisPeriod);
+        renderAnalysis();
+        renderReport();
+      });
+    });
+
+    ["analysisStartDate", "analysisEndDate"].forEach((id) => {
+      $(`#${id}`).addEventListener("change", (event) => {
+        state.analysisPeriod = "custom";
+        state.analysisStartDate = $("#analysisStartDate").value;
+        state.analysisEndDate = $("#analysisEndDate").value;
+        normalizeAnalysisDateRange(event.target.id);
+        saveAnalysisPeriod();
+        syncAnalysisPeriodControls();
+        renderAnalysis();
+        renderReport();
+      });
+    });
+
     $("#printReportButton").addEventListener("click", () => {
       renderReport();
       window.print();
@@ -902,14 +941,21 @@
     const hospitals = new Set(scopedRecords.map((record) => record.hospital).filter(Boolean));
     const expiring = getPriorityExpiryRecords(scopedRecords);
     const recentRecords = getRecentDeliveryRecords(scopedRecords).slice(0, 8);
-    const totalAmount = positiveRecords.reduce((sum, record) => sum + record.quantity * record.unitPrice, 0);
+    const amountRecords = positiveRecords.filter((record) => isWithinDashboardAmountPeriod(record.deliveryDate));
+    const totalAmount = amountRecords.reduce((sum, record) => sum + record.quantity * record.unitPrice, 0);
 
     $("#kpiGrid").innerHTML = [
       kpiCard(`${state.activeAssetType} 납품 이력`, `${scopedRecords.length.toLocaleString("ko-KR")}건`, "교환/회수 포함"),
       kpiCard("관리 병원", `${hospitals.size.toLocaleString("ko-KR")}곳`, "병원명 기준"),
       kpiCard("우선 확인", `${expiring.length.toLocaleString("ko-KR")}건`, "최근 1년·미정산·선납관리"),
-      kpiCard("누적 금액", formatMoney(totalAmount), "수량 x 단가"),
+      dashboardAmountCard(totalAmount),
     ].join("");
+
+    $("#dashboardAmountPeriod")?.addEventListener("change", (event) => {
+      state.dashboardAmountPeriod = event.target.value;
+      localStorage.setItem(STORAGE_KEYS.dashboardAmountPeriod, state.dashboardAmountPeriod);
+      renderDashboard();
+    });
 
     $("#expiryTableBody").innerHTML = expiring.length
       ? expiring
@@ -1077,7 +1123,10 @@
 
   function renderAnalysis() {
     const filtered = getFilteredRecords();
+    const comparisonRecords = getFilteredRecords({ includeAnalysisPeriod: false });
     renderAnalysisSnapshot(filtered);
+    renderHospitalPriceAnalysis(filtered);
+    renderOrderDropAnalysis(comparisonRecords);
     renderPriceAnalysis(filtered);
     renderPredictionAnalysis(filtered);
     renderLastDeliveryAnalysis(filtered);
@@ -1086,24 +1135,24 @@
 
   function renderAnalysisSnapshot(records) {
     const isEquipment = state.activeAssetType === "장비";
-    const recent = getRecentAnalysisRecords(records);
-    const amount = recent.reduce((sum, record) => sum + recordAmount(record), 0);
-    const customers = new Set(recent.map((record) => getAnalysisAccountLabel(record)).filter(Boolean));
-    const topCustomerRows = getTopGroupedRows(recent, (record) => getAnalysisAccountLabel(record), ANALYSIS_TOP_LIMIT, isEquipment ? "amount" : "count");
-    const topProductRows = getTopGroupedRows(recent, (record) => record.productGroup, ANALYSIS_TOP_LIMIT, isEquipment ? "amount" : "count");
+    const periodRecords = records.filter((record) => record.quantity > 0 && record.deliveryDate);
+    const amount = periodRecords.reduce((sum, record) => sum + recordAmount(record), 0);
+    const customers = new Set(periodRecords.map((record) => getAnalysisAccountLabel(record)).filter(Boolean));
+    const topCustomerRows = getTopGroupedRows(periodRecords, (record) => getAnalysisAccountLabel(record), ANALYSIS_TOP_LIMIT, isEquipment ? "amount" : "count");
+    const topProductRows = getTopGroupedRows(periodRecords, (record) => record.productGroup, ANALYSIS_TOP_LIMIT, isEquipment ? "amount" : "count");
     const topCustomer = topCustomerRows[0];
     const topProduct = topProductRows[0];
-    const fromDate = addDays(toDateInput(new Date()), -RECENT_ANALYSIS_DAYS);
 
-    $("#analysisPeriodLabel").textContent = `${fromDate} ~ ${toDateInput(new Date())}`;
+    $("#analysisOverviewTitle").textContent = `${getAnalysisPeriodShortLabel()} 핵심 흐름`;
+    $("#analysisPeriodLabel").textContent = getAnalysisPeriodLabel();
     $("#topAccountChartTitle").textContent = isEquipment ? "판매금액 Top 병원/간납사" : "판매 건수 Top 병원/간납사";
     $("#topAccountChartCaption").textContent = isEquipment ? "금액 기준" : "건수 기준";
     $("#productVolumeChartTitle").textContent = isEquipment ? "제품별 판매금액" : "제품별 판매 흐름";
     $("#productVolumeChartCaption").textContent = isEquipment ? "금액·건수 기준" : "건수·금액 기준";
     $("#analysisSummaryCards").innerHTML = [
-      snapshotMetric(isEquipment ? "최근 6개월 판매건" : "최근 6개월 건수", `${recent.length.toLocaleString("ko-KR")}건`, `${customers.size.toLocaleString("ko-KR")}개 거래처`),
-      snapshotMetric(isEquipment ? "판매금액" : "누적 금액", formatMoney(amount), "수량 x 단가"),
-      snapshotMetric("평균 단가", formatMoney(average(recent.map((record) => record.unitPrice).filter((price) => price > 0))), "단가 입력 건 기준"),
+      snapshotMetric(isEquipment ? "기간 판매건" : "기간 건수", `${periodRecords.length.toLocaleString("ko-KR")}건`, `${customers.size.toLocaleString("ko-KR")}개 거래처`),
+      snapshotMetric("기간 판매금액", formatMoney(amount), "수량 x 단가"),
+      snapshotMetric("평균 단가", formatMoney(average(periodRecords.map((record) => record.unitPrice).filter((price) => price > 0))), "단가 입력 건 기준"),
       snapshotMetric(isEquipment ? "최고 판매처" : "최다 거래처", topCustomer ? topCustomer.label : "-", topCustomer ? (isEquipment ? formatMoney(topCustomer.amount) : `${topCustomer.count.toLocaleString("ko-KR")}건`) : "데이터 없음"),
       snapshotMetric(isEquipment ? "최고 제품" : "최다 제품", topProduct ? topProduct.label : "-", topProduct ? (isEquipment ? formatMoney(topProduct.amount) : `${topProduct.count.toLocaleString("ko-KR")}건`) : "데이터 없음"),
     ].join("");
@@ -1111,16 +1160,16 @@
     renderHorizontalBars(
       "#topHospitalChart",
       topCustomerRows,
-      "최근 6개월 기준 표시할 병원/간납사 데이터가 없습니다.",
+      "선택 기간에 표시할 병원/간납사 데이터가 없습니다.",
       isEquipment,
     );
     renderHorizontalBars(
       "#productVolumeChart",
       topProductRows,
-      "최근 6개월 기준 표시할 제품 데이터가 없습니다.",
+      "선택 기간에 표시할 제품 데이터가 없습니다.",
       true,
     );
-    renderMonthlyTrend(recent);
+    renderMonthlyTrend(periodRecords);
   }
 
   function renderPriceAnalysis(records) {
@@ -1165,6 +1214,131 @@
           )
           .join("")
       : emptyRow(9, "단가 분석에 사용할 데이터가 없습니다.");
+  }
+
+  function renderHospitalPriceAnalysis(records) {
+    const selectedProduct = $("#analysisProductFilter")?.value || "";
+    const grouped = groupBy(
+      records.filter((record) => record.deliveryDate && record.unitPrice > 0 && record.quantity > 0),
+      (record) => `${getAnalysisAccountLabel(record)}|||${record.productGroup}`,
+    );
+    const rows = Object.entries(grouped)
+      .map(([key, items]) => {
+        const [account, productGroup] = key.split("|||");
+        const sorted = [...items].sort((a, b) => dateNumber(b.deliveryDate) - dateNumber(a.deliveryDate));
+        const prices = items.map((item) => item.unitPrice).filter((price) => price > 0);
+        const latest = sorted[0];
+        return {
+          account,
+          productGroup,
+          latestPrice: latest?.unitPrice || 0,
+          avgPrice: average(prices),
+          minPrice: Math.min(...prices),
+          maxPrice: Math.max(...prices),
+          count: items.length,
+          quantity: items.reduce((sum, record) => sum + Number(record.quantity || 0), 0),
+          amount: items.reduce((sum, record) => sum + recordAmount(record), 0),
+          latestDate: latest?.deliveryDate || "",
+        };
+      })
+      .sort((a, b) => b.amount - a.amount || b.count - a.count || dateNumber(b.latestDate) - dateNumber(a.latestDate))
+      .slice(0, selectedProduct ? 120 : 80);
+
+    $("#hospitalPriceBody").innerHTML = rows.length
+      ? rows
+          .map(
+            (row) => `
+              <tr>
+                <td>${escapeHtml(row.account)}</td>
+                <td>${productChip(row.productGroup)}</td>
+                <td>${formatMoney(row.latestPrice)}</td>
+                <td>${formatMoney(row.avgPrice)}</td>
+                <td>${formatMoney(row.minPrice)}</td>
+                <td>${formatMoney(row.maxPrice)}</td>
+                <td>${row.count.toLocaleString("ko-KR")}건</td>
+                <td>${row.quantity.toLocaleString("ko-KR")}</td>
+                <td>${formatMoney(row.amount)}</td>
+                <td>${formatDate(row.latestDate)}</td>
+              </tr>
+            `,
+          )
+          .join("")
+      : emptyRow(10, "선택 조건에 맞는 병원별 단가 데이터가 없습니다.");
+  }
+
+  function renderOrderDropAnalysis(records) {
+    const months = getOrderDropMonths();
+    const label = months === 12 ? "1년" : `${months}개월`;
+    const select = $("#orderDropPeriodSelect");
+    if (select) select.value = String(months);
+    $("#orderDropCaption").textContent = `금일 기준 최근 ${label}과 이전 ${label} 비교`;
+    $("#orderDropCurrentHead").textContent = `최근 ${label}`;
+    $("#orderDropPreviousHead").textContent = `이전 ${label}`;
+    const rows = getOrderDropRows(records);
+    $("#orderDropBody").innerHTML = rows.length
+      ? rows
+          .map(
+            (row) => `
+              <tr class="attention-row">
+                <td><span class="status-pill status-attention">병원확인 필요</span></td>
+                <td>${escapeHtml(row.account)}</td>
+                <td>${productChip(row.productGroup)}</td>
+                <td>${row.currentCount.toLocaleString("ko-KR")}건 · 수량 ${row.currentQuantity.toLocaleString("ko-KR")}</td>
+                <td>${row.previousCount.toLocaleString("ko-KR")}건 · 수량 ${row.previousQuantity.toLocaleString("ko-KR")}</td>
+                <td>${Math.round(row.dropRatio * 100).toLocaleString("ko-KR")}%</td>
+                <td>${formatDate(row.latestDate)}</td>
+                <td>${formatMoney(row.latestPrice)}</td>
+              </tr>
+            `,
+          )
+          .join("")
+      : emptyRow(8, `최근 ${label} 기준으로 눈에 띄게 줄어든 병원/제품 조합이 없습니다.`);
+  }
+
+  function getOrderDropRows(records) {
+    const positiveRecords = records.filter((record) => record.deliveryDate && record.quantity > 0);
+    const anchorDate = toDateInput(new Date());
+    if (!anchorDate) return [];
+    const months = getOrderDropMonths();
+    const currentStart = addMonths(anchorDate, -months);
+    const previousStart = addMonths(anchorDate, -months * 2);
+    const grouped = groupBy(positiveRecords, (record) => `${getAnalysisAccountLabel(record)}|||${record.productGroup}`);
+    return Object.entries(grouped)
+      .map(([key, items]) => {
+        const [account, productGroup] = key.split("|||");
+        const current = items.filter((record) => isDateAfter(record.deliveryDate, currentStart) && dateNumber(record.deliveryDate) <= dateNumber(anchorDate));
+        const previous = items.filter((record) => isDateAfter(record.deliveryDate, previousStart) && dateNumber(record.deliveryDate) <= dateNumber(currentStart));
+        const previousQuantity = previous.reduce((sum, record) => sum + Number(record.quantity || 0), 0);
+        const currentQuantity = current.reduce((sum, record) => sum + Number(record.quantity || 0), 0);
+        const previousCount = previous.length;
+        const currentCount = current.length;
+        if (previousCount < ORDER_DROP_MIN_PREVIOUS_COUNT || previousQuantity <= 0) return null;
+        const quantityDrop = 1 - currentQuantity / previousQuantity;
+        const countDrop = previousCount ? 1 - currentCount / previousCount : 0;
+        const dropRatio = Math.max(quantityDrop, countDrop);
+        if (dropRatio < ORDER_DROP_RATIO) return null;
+        const latest = latestRecord(items);
+        return {
+          account,
+          productGroup,
+          currentCount,
+          currentQuantity,
+          previousCount,
+          previousQuantity,
+          dropRatio,
+          latestDate: latest?.deliveryDate || "",
+          latestPrice: latest?.unitPrice || 0,
+          amountGap: previous.reduce((sum, record) => sum + recordAmount(record), 0) - current.reduce((sum, record) => sum + recordAmount(record), 0),
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.dropRatio - a.dropRatio || b.amountGap - a.amountGap || dateNumber(b.latestDate) - dateNumber(a.latestDate))
+      .slice(0, 60);
+  }
+
+  function getOrderDropMonths() {
+    const months = Number(state.orderDropPeriod || 3);
+    return [3, 6, 12].includes(months) ? months : 3;
   }
 
   function renderPredictionAnalysis(records) {
@@ -1468,7 +1642,7 @@
       last: state.activeAssetType === "장비" ? "최근 장비 판매/단가 보고서" : "마지막 납품/유효기간/단가 보고서",
     };
 
-    $("#reportDate").textContent = `기준일 ${formatDate(toDateInput(new Date()))}`;
+    $("#reportDate").textContent = `분석기간 ${getAnalysisPeriodLabel()}`;
     $("#reportTitle").textContent = `${state.activeAssetType} ${titles[reportType]}`;
     $("#reportGeneratedAt").textContent = `생성 ${new Date().toLocaleString("ko-KR")}`;
 
@@ -1783,13 +1957,15 @@
     };
   }
 
-  function getFilteredRecords() {
+  function getFilteredRecords(options = {}) {
+    const { includeAnalysisPeriod = true } = options;
     const hospital = $("#hospitalFilter")?.value.trim() || "";
     const product = $("#analysisProductFilter")?.value || "";
     return getScopedRecords().filter((record) => {
       const hospitalMatch = matchesHospitalSearch(record, hospital, product);
       const productMatch = !product || record.productGroup === product;
-      return hospitalMatch && productMatch;
+      const dateMatch = !includeAnalysisPeriod || isWithinAnalysisPeriod(record.deliveryDate);
+      return hospitalMatch && productMatch && dateMatch;
     });
   }
 
@@ -1903,8 +2079,87 @@
       .sort((a, b) => dateNumber(b.deliveryDate) - dateNumber(a.deliveryDate));
   }
 
-  function getRecentAnalysisRecords(records) {
-    return records.filter((record) => record.quantity > 0 && record.deliveryDate && isWithinDays(record.deliveryDate, RECENT_ANALYSIS_DAYS));
+  function initializeAnalysisPeriod() {
+    if (!["1", "3", "6", "12", "all", "custom"].includes(state.analysisPeriod)) {
+      state.analysisPeriod = "6";
+    }
+    if (state.analysisPeriod === "custom") {
+      if (state.analysisStartDate || state.analysisEndDate) normalizeAnalysisDateRange();
+      else state.analysisPeriod = "6";
+    }
+    if (state.analysisPeriod !== "custom") applyAnalysisPeriodPreset(state.analysisPeriod);
+    saveAnalysisPeriod();
+    syncAnalysisPeriodControls();
+  }
+
+  function setAnalysisPeriod(period) {
+    state.analysisPeriod = period;
+    applyAnalysisPeriodPreset(period);
+    saveAnalysisPeriod();
+    syncAnalysisPeriodControls();
+  }
+
+  function applyAnalysisPeriodPreset(period) {
+    const today = toDateInput(new Date());
+    if (period === "all") {
+      state.analysisStartDate = "";
+      state.analysisEndDate = "";
+      return;
+    }
+    const months = Number(period || 6);
+    state.analysisStartDate = addMonths(today, -months);
+    state.analysisEndDate = today;
+  }
+
+  function normalizeAnalysisDateRange(changedId = "") {
+    if (!state.analysisStartDate || !state.analysisEndDate) return;
+    if (dateNumber(state.analysisStartDate) <= dateNumber(state.analysisEndDate)) return;
+    if (changedId === "analysisEndDate") state.analysisStartDate = state.analysisEndDate;
+    else state.analysisEndDate = state.analysisStartDate;
+  }
+
+  function saveAnalysisPeriod() {
+    localStorage.setItem(STORAGE_KEYS.analysisPeriod, state.analysisPeriod);
+    localStorage.setItem(STORAGE_KEYS.analysisStartDate, state.analysisStartDate);
+    localStorage.setItem(STORAGE_KEYS.analysisEndDate, state.analysisEndDate);
+  }
+
+  function syncAnalysisPeriodControls() {
+    $$('[data-analysis-period]').forEach((button) => {
+      button.classList.toggle("active", button.dataset.analysisPeriod === state.analysisPeriod);
+    });
+    const startInput = $("#analysisStartDate");
+    const endInput = $("#analysisEndDate");
+    if (startInput) startInput.value = state.analysisStartDate;
+    if (endInput) endInput.value = state.analysisEndDate;
+  }
+
+  function isWithinAnalysisPeriod(dateValue) {
+    if (state.analysisPeriod === "all" && !state.analysisStartDate && !state.analysisEndDate) return true;
+    if (!dateValue) return false;
+    const value = dateNumber(dateValue);
+    if (state.analysisStartDate && value < dateNumber(state.analysisStartDate)) return false;
+    if (state.analysisEndDate && value > dateNumber(state.analysisEndDate)) return false;
+    return true;
+  }
+
+  function getAnalysisPeriodShortLabel() {
+    const labels = { "1": "최근 1개월", "3": "최근 3개월", "6": "최근 6개월", "12": "최근 1년", all: "전체 기간" };
+    return labels[state.analysisPeriod] || "선택 기간";
+  }
+
+  function getAnalysisPeriodLabel() {
+    if (!state.analysisStartDate && !state.analysisEndDate) return "전체 기간";
+    return `${state.analysisStartDate || "최초"} ~ ${state.analysisEndDate || "현재"}`;
+  }
+
+  function isWithinDashboardAmountPeriod(dateValue) {
+    if (state.dashboardAmountPeriod === "all") return true;
+    if (!dateValue) return false;
+    const storedMonths = Number(state.dashboardAmountPeriod);
+    const months = Number.isFinite(storedMonths) && storedMonths > 0 ? storedMonths : 6;
+    const fromDate = addMonths(toDateInput(new Date()), -months);
+    return dateNumber(dateValue) >= dateNumber(fromDate) && dateNumber(dateValue) <= dateNumber(toDateInput(new Date()));
   }
 
   function snapshotMetric(label, value, helper) {
@@ -1959,7 +2214,9 @@
   function renderMonthlyTrend(records) {
     const target = $("#monthlyTrendChart");
     if (!target) return;
-    const months = getLastMonthKeys(6);
+    const { months, truncated } = getAnalysisMonthKeys(records);
+    target.style.setProperty("--month-count", String(months.length || 1));
+    $("#monthlyTrendCaption").textContent = truncated ? "선택 기간 내 최근 12개월 · 매출 기준" : "선택 기간 · 매출 기준";
     const grouped = months.map((month) => {
       const items = records.filter((record) => monthKey(record.deliveryDate) === month.key);
       return {
@@ -1986,19 +2243,30 @@
       .join("");
   }
 
-  function getLastMonthKeys(count) {
-    const current = new Date();
+  function getAnalysisMonthKeys(records) {
+    const recordDates = records.map((record) => record.deliveryDate).filter(Boolean).sort();
+    const endValue = state.analysisEndDate || recordDates.at(-1) || toDateInput(new Date());
+    const startValue = state.analysisStartDate || recordDates[0] || endValue;
+    let current = parseDate(startValue);
+    const end = parseDate(endValue);
     current.setDate(1);
+    end.setDate(1);
+    const totalMonths = Math.max(1, (end.getFullYear() - current.getFullYear()) * 12 + end.getMonth() - current.getMonth() + 1);
+    const truncated = totalMonths > 12;
+    if (truncated) {
+      current = new Date(end);
+      current.setMonth(current.getMonth() - 11);
+    }
     const months = [];
-    for (let index = count - 1; index >= 0; index -= 1) {
+    while (current <= end) {
       const value = new Date(current);
-      value.setMonth(current.getMonth() - index);
       months.push({
         key: `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}`,
-        label: `${value.getMonth() + 1}월`,
+        label: `${String(value.getFullYear()).slice(2)}.${value.getMonth() + 1}`,
       });
+      current.setMonth(current.getMonth() + 1);
     }
-    return months;
+    return { months, truncated };
   }
 
   function monthKey(dateValue) {
@@ -2133,6 +2401,28 @@
     return `<article class="kpi-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(helper)}</small></article>`;
   }
 
+  function dashboardAmountCard(value) {
+    const options = [
+      ["1", "1개월"],
+      ["3", "3개월"],
+      ["6", "6개월"],
+      ["12", "1년"],
+      ["all", "전체"],
+    ]
+      .map(([period, label]) => `<option value="${period}"${state.dashboardAmountPeriod === period ? " selected" : ""}>${label}</option>`)
+      .join("");
+    return `
+      <article class="kpi-card amount-kpi-card">
+        <div class="kpi-card-heading">
+          <span>기간별 판매금액</span>
+          <select id="dashboardAmountPeriod" aria-label="현황 판매금액 기간">${options}</select>
+        </div>
+        <strong>${escapeHtml(formatMoney(value))}</strong>
+        <small>선택 기간 · 수량 x 단가</small>
+      </article>
+    `;
+  }
+
   function reportKpi(label, value) {
     return `<article class="report-kpi"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`;
   }
@@ -2143,6 +2433,18 @@
 
   function latestRecord(records) {
     return [...records].sort((a, b) => dateNumber(b.deliveryDate) - dateNumber(a.deliveryDate))[0];
+  }
+
+  function latestDeliveryDate(records) {
+    return records
+      .map((record) => normalizeDate(record.deliveryDate))
+      .filter(Boolean)
+      .sort()
+      .at(-1);
+  }
+
+  function isDateAfter(dateValue, threshold) {
+    return dateNumber(dateValue) > dateNumber(threshold);
   }
 
   function groupBy(items, keyFn) {
@@ -2205,6 +2507,17 @@
     if (!dateValue || !days) return "";
     const date = parseDate(dateValue);
     date.setDate(date.getDate() + Number(days));
+    return toDateInput(date);
+  }
+
+  function addMonths(dateValue, months) {
+    if (!dateValue) return "";
+    const date = parseDate(dateValue);
+    const originalDay = date.getDate();
+    date.setDate(1);
+    date.setMonth(date.getMonth() + Number(months || 0));
+    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    date.setDate(Math.min(originalDay, lastDay));
     return toDateInput(date);
   }
 

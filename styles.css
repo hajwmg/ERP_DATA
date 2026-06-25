@@ -325,6 +325,27 @@ button svg,
   color: var(--muted);
 }
 
+.kpi-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kpi-card-heading select {
+  width: auto;
+  min-width: 76px;
+  min-height: 30px;
+  padding: 4px 26px 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.amount-kpi-card strong {
+  font-size: 24px;
+}
+
 .content-band,
 .analysis-grid {
   display: grid;
@@ -348,6 +369,11 @@ button svg,
   padding: 18px;
 }
 
+.priority-panel {
+  border-color: #cbdcd5;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbf9 100%);
+}
+
 .panel-header {
   display: flex;
   align-items: baseline;
@@ -359,6 +385,18 @@ button svg,
 .panel-header h3 {
   margin: 0;
   font-size: 17px;
+}
+
+.compact-control {
+  display: grid;
+  gap: 4px;
+  min-width: 132px;
+}
+
+.compact-control span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .panel-search {
@@ -482,6 +520,15 @@ tr:last-child td {
 .status-ok {
   background: var(--green-soft);
   color: var(--teal-dark);
+}
+
+.status-attention {
+  background: var(--amber-soft);
+  color: #8a4f13;
+}
+
+.attention-row td {
+  background: #fffaf1;
 }
 
 .record-list {
@@ -635,6 +682,74 @@ textarea {
   background: #ffffff;
 }
 
+.analysis-period-filter {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(360px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.control-label {
+  align-self: center;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.period-segments {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(58px, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f4f7f6;
+}
+
+.period-segments button {
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.period-segments button:hover {
+  background: #e7efec;
+  color: var(--ink);
+}
+
+.period-segments button.active {
+  background: #ffffff;
+  color: var(--teal-dark);
+  box-shadow: 0 1px 4px rgba(31, 42, 46, 0.14);
+}
+
+.period-date-range {
+  display: flex;
+  gap: 8px;
+  align-items: end;
+}
+
+.period-date-range label {
+  min-width: 142px;
+}
+
+.period-date-range input {
+  min-width: 142px;
+}
+
+.date-range-separator {
+  padding-bottom: 10px;
+  color: var(--muted);
+}
+
 .analysis-overview {
   display: grid;
   gap: 14px;
@@ -773,10 +888,12 @@ textarea {
 
 .month-chart {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--month-count, 6), minmax(48px, 1fr));
   gap: 8px;
   align-items: end;
   min-height: 190px;
+  overflow-x: auto;
+  padding-bottom: 4px;
 }
 
 .month-column {
@@ -1063,6 +1180,16 @@ textarea {
   .span-2 {
     grid-column: auto;
   }
+
+  .analysis-period-filter {
+    grid-template-columns: 1fr;
+  }
+
+  .period-date-range,
+  .period-date-range label,
+  .period-date-range input {
+    width: 100%;
+  }
 }
 
 @media (max-width: 720px) {
@@ -1088,6 +1215,19 @@ textarea {
   .focus-filter-bar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .period-segments {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .period-date-range {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .date-range-separator {
+    display: none;
   }
 
   .month-chart {

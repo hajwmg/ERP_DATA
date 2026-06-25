@@ -31,7 +31,10 @@
         </div>
 
         <nav class="nav-tabs" aria-label="주요 메뉴">
-          <button class="tab-button active" type="button" data-view="dashboard">
+          <button class="tab-button active" type="button" data-view="analysis">
+            <i data-lucide="chart-no-axes-combined"></i><span>분석하기</span>
+          </button>
+          <button class="tab-button" type="button" data-view="dashboard">
             <i data-lucide="layout-dashboard"></i><span>현황</span>
           </button>
           <button class="tab-button" type="button" data-view="entry">
@@ -39,9 +42,6 @@
           </button>
           <button class="tab-button" type="button" data-view="bulk">
             <i data-lucide="file-spreadsheet"></i><span>대량 입력</span>
-          </button>
-          <button class="tab-button" type="button" data-view="analysis">
-            <i data-lucide="chart-no-axes-combined"></i><span>분석하기</span>
           </button>
           <button class="tab-button" type="button" data-view="products">
             <i data-lucide="boxes"></i><span>제품 묶음</span>
@@ -58,7 +58,7 @@
       </aside>
 
       <main class="workspace">
-        <section class="view active" id="dashboard-view">
+        <section class="view" id="dashboard-view">
           <header class="page-header">
             <div>
               <p class="eyebrow">Inventory & delivery</p>
@@ -324,16 +324,21 @@
           </section>
         </section>
 
-        <section class="view" id="analysis-view">
+        <section class="view active" id="analysis-view">
           <header class="page-header">
             <div>
               <p class="eyebrow">Analysis</p>
               <h2>분석하기</h2>
               <p class="mode-copy" id="analysisModeCopy">소모품 데이터 기준, 장비 연결 이력 포함</p>
             </div>
-            <button class="secondary-button" type="button" id="printReportButton">
-              <i data-lucide="printer"></i><span>1장 보고서 인쇄</span>
-            </button>
+            <div class="header-actions">
+              <a class="secondary-button" href="price-standard.html">
+                <i data-lucide="badge-dollar-sign"></i><span>가격 기준 설정</span>
+              </a>
+              <button class="secondary-button" type="button" id="printReportButton">
+                <i data-lucide="printer"></i><span>1장 보고서 인쇄</span>
+              </button>
+            </div>
           </header>
 
           <div class="analysis-controls">
@@ -359,12 +364,33 @@
               <input class="main-account-toggle" type="checkbox" checked />
               <span>대학/간납사 중심만 보기</span>
             </label>
+            <div class="analysis-period-filter">
+              <span class="control-label">분석 기간</span>
+              <div class="period-segments" role="group" aria-label="분석 기간 빠른 선택">
+                <button type="button" data-analysis-period="1">1개월</button>
+                <button type="button" data-analysis-period="3">3개월</button>
+                <button class="active" type="button" data-analysis-period="6">6개월</button>
+                <button type="button" data-analysis-period="12">1년</button>
+                <button type="button" data-analysis-period="all">전체</button>
+              </div>
+              <div class="period-date-range">
+                <label>
+                  <span>시작일</span>
+                  <input id="analysisStartDate" type="date" />
+                </label>
+                <span class="date-range-separator" aria-hidden="true">~</span>
+                <label>
+                  <span>종료일</span>
+                  <input id="analysisEndDate" type="date" />
+                </label>
+              </div>
+            </div>
           </div>
 
-          <section class="analysis-overview" aria-label="최근 6개월 분석 요약">
+          <section class="analysis-overview" aria-label="선택 기간 분석 요약">
             <div class="overview-header">
               <div>
-                <h3>최근 6개월 핵심 흐름</h3>
+                <h3 id="analysisOverviewTitle">최근 6개월 핵심 흐름</h3>
                 <span class="muted-text">현재 필터 기준으로 거래처, 제품, 월별 흐름을 요약</span>
               </div>
               <span class="period-pill" id="analysisPeriodLabel">최근 6개월</span>
@@ -388,7 +414,7 @@
               <section class="visual-panel">
                 <div class="visual-header">
                   <h4>월별 판매 추이</h4>
-                  <span class="muted-text">매출 기준</span>
+                  <span class="muted-text" id="monthlyTrendCaption">선택 기간 · 매출 기준</span>
                 </div>
                 <div class="month-chart" id="monthlyTrendChart"></div>
               </section>
@@ -396,6 +422,68 @@
           </section>
 
           <div class="analysis-grid">
+            <section class="panel full-width priority-panel">
+              <div class="panel-header">
+                <div>
+                  <h3>병원별 제품 단가</h3>
+                  <span class="muted-text">제품을 선택하면 병원/간납사별 최근 단가와 가격폭을 바로 확인</span>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>병원/간납사</th>
+                      <th>대표제품</th>
+                      <th>최근 단가</th>
+                      <th>평균 단가</th>
+                      <th>최저</th>
+                      <th>최고</th>
+                      <th>거래건수</th>
+                      <th>수량</th>
+                      <th>누적금액</th>
+                      <th>최근 납품</th>
+                    </tr>
+                  </thead>
+                  <tbody id="hospitalPriceBody"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel full-width priority-panel">
+              <div class="panel-header">
+                <div>
+                  <h3>발주 감소 확인</h3>
+                  <span class="muted-text" id="orderDropCaption">금일 기준 최근 3개월과 이전 3개월 비교</span>
+                </div>
+                <label class="compact-control">
+                  <span>비교 기간</span>
+                  <select id="orderDropPeriodSelect">
+                    <option value="3">3개월</option>
+                    <option value="6">6개월</option>
+                    <option value="12">1년</option>
+                  </select>
+                </label>
+              </div>
+              <div class="table-wrap compact">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>상태</th>
+                      <th>병원/간납사</th>
+                      <th>대표제품</th>
+                      <th id="orderDropCurrentHead">최근 3개월</th>
+                      <th id="orderDropPreviousHead">이전 3개월</th>
+                      <th>감소율</th>
+                      <th>최근 납품</th>
+                      <th>최근 단가</th>
+                    </tr>
+                  </thead>
+                  <tbody id="orderDropBody"></tbody>
+                </table>
+              </div>
+            </section>
+
             <section class="panel">
               <div class="panel-header">
                 <h3>제품별 단가 확인</h3>

@@ -79,3 +79,36 @@ create policy "delivery_records_delete"
   on public.delivery_records
   for delete
   using (true);
+
+create table if not exists public.price_standards (
+  product_name text primary key,
+  standard_price numeric not null default 0,
+  agency_fee_percent numeric not null default 3,
+  benefit_type text default '',
+  benefit_price numeric not null default 0,
+  updated_at timestamptz default now()
+);
+
+create index if not exists price_standards_updated_at_idx
+  on public.price_standards (updated_at);
+
+alter table public.price_standards enable row level security;
+
+drop policy if exists "price_standards_select" on public.price_standards;
+create policy "price_standards_select"
+  on public.price_standards
+  for select
+  using (true);
+
+drop policy if exists "price_standards_insert" on public.price_standards;
+create policy "price_standards_insert"
+  on public.price_standards
+  for insert
+  with check (true);
+
+drop policy if exists "price_standards_update" on public.price_standards;
+create policy "price_standards_update"
+  on public.price_standards
+  for update
+  using (true)
+  with check (true);
