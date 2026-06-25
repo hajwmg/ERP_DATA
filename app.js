@@ -2312,13 +2312,19 @@
   }
 
   function isPrepaidPriorityTarget(record) {
+    if (isDealerManagedRecord(record)) return false;
     const text = normalizeSearchText([record.hospital, record.relationGroup, record.memo].join(" "));
     return PREPAID_PRIORITY_KEYWORDS.some((keyword) => text.includes(normalizeSearchText(keyword)));
   }
 
   function isMainAccountRecord(record) {
+    if (isDealerManagedRecord(record)) return false;
     const text = normalizeSearchText([record.hospital, record.relationGroup, record.memo].join(" "));
     return MAIN_ACCOUNT_KEYWORDS.some((keyword) => text.includes(normalizeSearchText(keyword)));
+  }
+
+  function isDealerManagedRecord(record) {
+    return normalizeSearchText(record.managerName).includes("이미경");
   }
 
   function matchesHospitalSearch(record, rawQuery, selectedProduct = "") {

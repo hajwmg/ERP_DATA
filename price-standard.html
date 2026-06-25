@@ -82,6 +82,9 @@
       .tab.active { background: white; color: var(--teal); box-shadow: 0 2px 8px rgba(23, 37, 43, 0.1); }
       .tab-panel { display: none; }
       .tab-panel.active { display: block; }
+      .product-filter { display: flex; gap: 6px; margin: 0 0 12px; padding: 5px; overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: #f1f5f3; }
+      .product-filter button { min-width: max-content; min-height: 34px; padding: 7px 12px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-weight: 900; }
+      .product-filter button.active { background: #ffffff; color: var(--teal); box-shadow: 0 2px 8px rgba(23, 37, 43, 0.08); }
 
       .section { margin: 0 0 20px; }
       .section-heading { justify-content: space-between; gap: 16px; margin-bottom: 10px; }
@@ -101,6 +104,7 @@
       .badge { display: inline-flex; align-items: center; min-height: 23px; padding: 3px 7px; border-radius: 999px; background: var(--blue-soft); color: var(--blue); font-size: 10px; font-weight: 900; }
       .badge.agency, .badge.sensitive { background: var(--amber-soft); color: var(--amber); }
       .badge.other { background: #eef0ef; color: #68767a; }
+      .badge.dealer { background: var(--red-soft); color: var(--red); }
       .badge.covered, .badge.ok { background: var(--teal-soft); color: var(--teal); }
       .badge.direct { background: var(--blue-soft); color: var(--blue); }
       .help-box { margin-bottom: 16px; padding: 12px 14px; border-left: 4px solid var(--teal); border-radius: 7px; background: #f2faf7; color: #365653; font-size: 12px; line-height: 1.6; }
@@ -235,6 +239,15 @@
         <section class="tab-panel" id="accounts-panel">
           <section class="section">
             <div class="section-heading"><div><h2>병원·간납사별 현황</h2><p>선택 기간 내 거래처·제품별 최근가, 평균가, 수량, 금액을 매출액 순으로 표시합니다.</p></div></div>
+            <div class="product-filter" id="accountProductFilter" aria-label="제품별 현황 필터">
+              <button class="active" type="button" data-account-product="all">전체</button>
+              <button type="button" data-account-product="나비밴드">나비밴드</button>
+              <button type="button" data-account-product="나비픽스">나비픽스</button>
+              <button type="button" data-account-product="나빌룬">나빌룬</button>
+              <button type="button" data-account-product="나잘스프린트">나잘스프린트</button>
+              <button type="button" data-account-product="네피스타">네피스타</button>
+              <button type="button" data-account-product="나잘드레싱">나잘드레싱</button>
+            </div>
             <div class="table-shell">
               <table>
                 <thead>
@@ -311,6 +324,7 @@
           standards: {},
           unlocked: false,
           tableReady: true,
+          accountProduct: "all",
         };
         const $ = (selector) => document.querySelector(selector);
         const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -326,6 +340,13 @@
 
         function bindControls() {
           $$(".tab").forEach((button) => button.addEventListener("click", () => showTab(button.dataset.tab)));
+          $$("[data-account-product]").forEach((button) => {
+            button.addEventListener("click", () => {
+              state.accountProduct = button.dataset.accountProduct;
+              syncAccountProductButtons();
+              renderAccounts();
+            });
+          });
           ["periodSelect", "scopeSelect"].forEach((id) => $(`#${id}`).addEventListener("change", applyFilters));
           $("#feeInput").addEventListener("input", () => {
             PRODUCT_NAMES.forEach((name) => state.standards[name].agencyFeePercent = Number($("#feeInput").value || 0));
@@ -363,7 +384,7 @@
             const rows = [];
             for (let offset = 0; ; offset += 1000) {
               const params = new URLSearchParams({
-                select: "id,asset_type,event_type,delivery_date,hospital,product_group,product_detail,quantity,unit_price,memo",
+                select: "id,asset_type,event_type,delivery_date,hospital,manager_name,product_group,product_detail,quantity,unit_price,memo",
                 limit: "1000",
                 offset: String(offset),
               });
@@ -464,6 +485,7 @@
             eventType: row.event_type || "",
             date: String(row.delivery_date || "").slice(0, 10),
             account: String(row.hospital || "").trim(),
+            manager: String(row.manager_name || "").trim(),
             product: String(row.product_group || "").trim(),
             detail: String(row.product_detail || ""),
             quantity: Number(row.quantity || 0),
@@ -481,9 +503,9 @@
           const scope = $("#scopeSelect").value;
           const cutoff = period === "all" ? "" : dateMonthsAgo(Number(period));
           state.rows = state.all.filter((row) => {
-            const channel = classifyAccount(row.account);
+            const channel = classifyAccount(row);
             const periodMatch = !cutoff || row.date >= cutoff;
-            const scopeMatch = scope === "all" || (scope === "target" && channel !== "other") || scope === channel;
+            const scopeMatch = scope === "all" || (scope === "target" && ["direct", "agency"].includes(channel)) || scope === channel;
             return periodMatch && scopeMatch;
           });
           buildStats();
@@ -524,8 +546,8 @@
 
         function renderSummary() {
           const amount = state.rows.reduce((total, row) => total + row.quantity * row.unitPrice, 0);
-          const directAccounts = new Set(state.rows.filter((row) => classifyAccount(row.account) === "direct").map((row) => row.account));
-          const agencies = new Set(state.rows.filter((row) => classifyAccount(row.account) === "agency").map((row) => row.account));
+          const directAccounts = new Set(state.rows.filter((row) => classifyAccount(row) === "direct").map((row) => row.account));
+          const agencies = new Set(state.rows.filter((row) => classifyAccount(row) === "agency").map((row) => row.account));
           const nonBenefit = state.stats.filter((stat) => stat.type !== "급여").reduce((sum, stat) => sum + stat.amount, 0);
           const metrics = [
             ["분석 거래", `${state.rows.length.toLocaleString("ko-KR")}건`, `${new Set(state.rows.map((row) => row.account)).size}개 거래처`],
@@ -563,12 +585,13 @@
         }
 
         function renderAccounts() {
-          const rows = Object.values(groupBy(state.rows, (row) => `${row.account}|||${row.product}`)).map((items) => {
+          const sourceRows = state.accountProduct === "all" ? state.rows : state.rows.filter((row) => row.product === state.accountProduct);
+          const rows = Object.values(groupBy(sourceRows, (row) => `${row.account}|||${row.product}`)).map((items) => {
             const latest = [...items].sort((a, b) => b.date.localeCompare(a.date))[0];
             const prices = items.map((row) => row.unitPrice).sort((a, b) => a - b);
             const quantity = sum(items, "quantity");
             const amount = items.reduce((total, row) => total + row.quantity * row.unitPrice, 0);
-            return { account: latest.account, product: latest.product, channel: classifyAccount(latest.account), latest, count: items.length, quantity, amount, average: quantity ? amount / quantity : average(prices), min: prices[0] || 0, max: prices.at(-1) || 0 };
+            return { account: latest.account, product: latest.product, channel: classifyAccount(latest), latest, count: items.length, quantity, amount, average: quantity ? amount / quantity : average(prices), min: prices[0] || 0, max: prices.at(-1) || 0 };
           }).sort((a, b) => b.amount - a.amount || b.count - a.count);
           $("#accountBody").innerHTML = rows.length ? rows.map((item) => `<tr>
             <td>${channelBadge(item.channel)}</td>
@@ -582,7 +605,13 @@
             <td class="numeric">${formatMoney(item.max)}</td>
             <td class="numeric"><strong>${formatMoney(item.amount)}</strong></td>
             <td>${item.latest.date || "-"}</td>
-          </tr>`).join("") : emptyRow(11, "선택 조건에 해당하는 거래처 데이터가 없습니다.");
+          </tr>`).join("") : emptyRow(11, "선택한 제품 조건에 해당하는 거래처 데이터가 없습니다.");
+        }
+
+        function syncAccountProductButtons() {
+          $$("[data-account-product]").forEach((button) => {
+            button.classList.toggle("active", button.dataset.accountProduct === state.accountProduct);
+          });
         }
 
         function renderProducts() {
@@ -615,10 +644,17 @@
           if (first) $("#feeInput").value = Number(first.agencyFeePercent ?? 3);
         }
 
-        function classifyAccount(account) {
+        function classifyAccount(row) {
+          const account = typeof row === "string" ? row : row.account;
+          if (isDealerManaged(row)) return "dealer";
           if (AGENCY_RE.test(account)) return "agency";
           if (DIRECT_RE.test(account)) return "direct";
           return "other";
+        }
+
+        function isDealerManaged(row) {
+          const manager = typeof row === "string" ? "" : row.manager;
+          return normalizeSearchText(manager).includes("이미경");
         }
 
         function productMeta(name) {
@@ -632,7 +668,7 @@
         }
 
         function channelBadge(channel) {
-          const labels = { direct: "대학병원", agency: "간납사", other: "기타" };
+          const labels = { direct: "대학병원", agency: "간납사", dealer: "대리점", other: "기타" };
           return `<span class="badge ${channel}">${labels[channel]}</span>`;
         }
 
@@ -647,6 +683,7 @@
         function formatMoney(value) { return Number(value || 0) ? `${money.format(Math.round(value))}원` : "-"; }
         function emptyRow(colspan, text) { return `<tr><td colspan="${colspan}" class="empty">${escapeHtml(text)}</td></tr>`; }
         function escapeHtml(value) { return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[char]); }
+        function normalizeSearchText(value) { return String(value || "").toLowerCase().replace(/\s+/g, "").replace(/주식회사|[㈜()]/g, ""); }
       })();
     </script>
   </body>
