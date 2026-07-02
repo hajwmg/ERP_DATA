@@ -687,6 +687,76 @@
               <code>온라인 저장</code>은 현재 화면 데이터를 Supabase에 올리고, <code>온라인 불러오기</code>는 저장된 데이터를 다시 가져옵니다.
             </p>
           </section>
+
+          <section class="panel settings-panel">
+            <div class="panel-header">
+              <div>
+                <h3>거래처 분류 설정</h3>
+                <span class="muted-text">거래처명·담당자명 키워드를 대학병원, 간납사, 대리점으로 직접 분류</span>
+              </div>
+              <span class="muted-text" id="accountRuleSummary">0개 규칙</span>
+            </div>
+            <div class="classification-lock">
+              <label>
+                <span>관리자 비밀번호</span>
+                <input id="classificationPasswordInput" type="password" inputmode="numeric" placeholder="비밀번호 입력" autocomplete="off" />
+              </label>
+              <button class="secondary-button" type="button" id="unlockClassificationButton">
+                <i data-lucide="lock-keyhole"></i><span>수정 열기</span>
+              </button>
+              <p id="classificationLockMessage">비밀번호 확인 후 거래처 분류 규칙을 추가·삭제할 수 있습니다.</p>
+            </div>
+            <form class="classification-form" id="classificationRuleForm">
+              <label>
+                <span>기준</span>
+                <select name="field" disabled>
+                  <option value="account">거래처명</option>
+                  <option value="manager">담당자명</option>
+                  <option value="memo">메모</option>
+                  <option value="any">전체</option>
+                </select>
+              </label>
+              <label>
+                <span>키워드</span>
+                <input name="keyword" type="text" placeholder="예: 오페라살루따리스" disabled />
+              </label>
+              <label>
+                <span>분류</span>
+                <select name="category" disabled>
+                  <option value="direct">대학병원</option>
+                  <option value="agency">간납사</option>
+                  <option value="dealer">대리점</option>
+                  <option value="other">기타</option>
+                </select>
+              </label>
+              <label>
+                <span>메모</span>
+                <input name="memo" type="text" placeholder="선택 입력" disabled />
+              </label>
+              <button class="primary-button" type="submit" disabled>
+                <i data-lucide="plus"></i><span>규칙 추가</span>
+              </button>
+            </form>
+            <div class="table-wrap compact">
+              <table>
+                <thead>
+                  <tr>
+                    <th>상태</th>
+                    <th>기준</th>
+                    <th>키워드</th>
+                    <th>분류</th>
+                    <th>메모</th>
+                    <th>관리</th>
+                  </tr>
+                </thead>
+                <tbody id="accountRuleBody"></tbody>
+              </table>
+            </div>
+            <p class="settings-note">
+              등록된 분류 규칙은 코드 안의 기본 키워드보다 먼저 적용됩니다.
+              예: <code>담당자명 / 이미경 / 대리점</code>, <code>거래처명 / 오페라살루따리스 / 간납사</code>
+            </p>
+          </section>
         </section>
       </main>
     </div>

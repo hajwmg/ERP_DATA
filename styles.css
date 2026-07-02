@@ -1023,6 +1023,35 @@ textarea {
   grid-template-columns: 1fr 1fr;
 }
 
+.classification-lock,
+.classification-form {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.classification-lock {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.classification-lock p {
+  grid-column: 1 / -1;
+  margin: -2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.classification-lock.unlocked p {
+  color: var(--teal-dark);
+  font-weight: 700;
+}
+
+.classification-form {
+  grid-template-columns: 130px minmax(180px, 1fr) 130px minmax(180px, 1fr) auto;
+  align-items: end;
+}
+
 .settings-note {
   margin: 14px 0 0;
   color: var(--muted);
@@ -1172,6 +1201,8 @@ textarea {
   .snapshot-metrics,
   .visual-grid,
   .settings-grid,
+  .classification-lock,
+  .classification-form,
   .product-split-grid,
   .product-form {
     grid-template-columns: 1fr;

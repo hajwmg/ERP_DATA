@@ -10,6 +10,7 @@
     analysisEndDate: "delivery-expiry-analysis-end-date-v1",
     dashboardAmountPeriod: "delivery-expiry-dashboard-amount-period-v1",
     orderDropPeriod: "delivery-expiry-order-drop-period-v1",
+    accountRules: "delivery-expiry-account-rules-v1",
   };
 
   const ASSET_TYPES = ["소모품", "장비"];
@@ -173,6 +174,28 @@
     },
   ];
 
+  const ACCOUNT_CATEGORIES = {
+    direct: "대학병원",
+    agency: "간납사",
+    dealer: "대리점",
+    other: "기타",
+  };
+
+  const ACCOUNT_RULE_FIELDS = {
+    account: "거래처명",
+    manager: "담당자명",
+    memo: "메모",
+    any: "전체",
+  };
+
+  const defaultAccountRules = [
+    { id: "rule-manager-lee-mi-kyung", field: "manager", keyword: "이미경", category: "dealer", memo: "이미경 담당 건은 대리점으로 분류", active: true },
+    { id: "rule-agency-dongha", field: "account", keyword: "동하메디칼", category: "agency", memo: "간납사", active: true },
+    { id: "rule-agency-opera", field: "account", keyword: "오페라살루따리스", category: "agency", memo: "간납사", active: true },
+    { id: "rule-direct-st-vincent", field: "account", keyword: "성빈센트", category: "direct", memo: "대학병원", active: true },
+    { id: "rule-direct-catholic", field: "account", keyword: "가톨릭", category: "direct", memo: "대학병원 계열", active: true },
+  ];
+
   const defaultProducts = [
     { id: "naviband", name: "나비밴드", assetType: "소모품", relationGroup: "비강 소모품군", shelfLifeMonths: 36, color: "#287c6f" },
     { id: "navifix", name: "나비픽스", assetType: "소모품", relationGroup: "비강 소모품군", shelfLifeMonths: 36, color: "#376fa3" },
@@ -287,6 +310,7 @@
     analysisEndDate: localStorage.getItem(STORAGE_KEYS.analysisEndDate) || "",
     dashboardAmountPeriod: localStorage.getItem(STORAGE_KEYS.dashboardAmountPeriod) || "6",
     orderDropPeriod: localStorage.getItem(STORAGE_KEYS.orderDropPeriod) || "3",
+    accountRules: normalizeAccountRules(loadJson(STORAGE_KEYS.accountRules, defaultAccountRules)),
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -305,6 +329,7 @@
     bindBulkImport();
     bindAnalysisControls();
     bindStorageActions();
+    bindClassificationSettings();
     hydrateSettings();
     refreshAll();
     initIcons();
@@ -425,6 +450,33 @@
     return {
       supabaseUrl: settings?.supabaseUrl || DEFAULT_SUPABASE_CONFIG.supabaseUrl,
       supabaseKey: settings?.supabaseKey || DEFAULT_SUPABASE_CONFIG.supabaseKey,
+    };
+  }
+
+  function normalizeAccountRules(rules) {
+    const source = Array.isArray(rules) && rules.length ? rules : defaultAccountRules;
+    const seen = new Set();
+    return source
+      .map(normalizeAccountRule)
+      .filter((rule) => {
+        if (!rule.keyword) return false;
+        const key = `${rule.field}|||${normalizeSearchText(rule.keyword)}|||${rule.category}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }
+
+  function normalizeAccountRule(rule) {
+    const field = ["account", "manager", "memo", "any"].includes(rule?.field) ? rule.field : "account";
+    const category = Object.keys(ACCOUNT_CATEGORIES).includes(rule?.category) ? rule.category : "other";
+    return {
+      id: rule?.id || cryptoId(),
+      field,
+      keyword: String(rule?.keyword || "").trim(),
+      category,
+      memo: String(rule?.memo || "").trim(),
+      active: rule?.active !== false,
     };
   }
 
@@ -760,6 +812,58 @@
     $("#loadOnlineButton").addEventListener("click", loadFromSupabase);
   }
 
+  function bindClassificationSettings() {
+    $("#unlockClassificationButton")?.addEventListener("click", () => {
+      const password = $("#classificationPasswordInput")?.value || "";
+      if (password !== BULK_IMPORT_PASSWORD) {
+        toast("거래처 분류 설정 비밀번호가 맞지 않습니다.");
+        return;
+      }
+      setClassificationLockState(true);
+      toast("거래처 분류 설정이 열렸습니다.");
+    });
+
+    $("#classificationRuleForm")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!requireAdminWrite("거래처 분류 설정")) return;
+      const form = event.currentTarget;
+      const keyword = form.keyword.value.trim();
+      if (!keyword) {
+        toast("분류할 키워드를 입력해 주세요.");
+        return;
+      }
+      const rule = normalizeAccountRule({
+        id: cryptoId(),
+        field: form.field.value,
+        keyword,
+        category: form.category.value,
+        memo: form.memo.value,
+        active: true,
+      });
+      state.accountRules = [rule, ...state.accountRules.filter((item) => !(item.field === rule.field && normalizeSearchText(item.keyword) === normalizeSearchText(rule.keyword)))];
+      form.reset();
+      await persistAccountRules();
+      refreshAll();
+      toast("거래처 분류 규칙을 추가했습니다.");
+    });
+  }
+
+  function setClassificationLockState(unlocked) {
+    state.adminUnlocked = unlocked;
+    const form = $("#classificationRuleForm");
+    const lockBox = $(".classification-lock");
+    const message = $("#classificationLockMessage");
+    form?.querySelectorAll("input, select, button").forEach((element) => {
+      element.disabled = !unlocked;
+    });
+    lockBox?.classList.toggle("unlocked", unlocked);
+    if (message) {
+      message.textContent = unlocked
+        ? "거래처 분류 규칙을 추가·삭제할 수 있습니다. 저장하면 온라인에도 반영됩니다."
+        : "비밀번호 확인 후 거래처 분류 규칙을 추가·삭제할 수 있습니다.";
+    }
+  }
+
   function hydrateSettings() {
     $("#supabaseUrl").value = state.settings.supabaseUrl || "";
     $("#supabaseKey").value = state.settings.supabaseKey || "";
@@ -828,6 +932,7 @@
     try {
       const data = await fetchAllSupabaseRecords();
       state.records = data.map(recordFromSupabase);
+      await loadAccountRulesFromSupabase({ silent: true });
       saveJson(STORAGE_KEYS.records, state.records);
       refreshAll();
       if (!silent) toast(`온라인 데이터 ${state.records.length.toLocaleString("ko-KR")}건을 불러왔습니다.`);
@@ -882,6 +987,7 @@
     renderDashboard();
     renderAnalysis();
     renderProducts();
+    renderAccountRules();
     renderReport();
     initIcons();
   }
@@ -1635,6 +1741,60 @@
       : `<p class="muted-text">${assetType} 제품 묶음이 없습니다.</p>`;
   }
 
+  function renderAccountRules() {
+    const tbody = $("#accountRuleBody");
+    if (!tbody) return;
+    const activeCount = state.accountRules.filter((rule) => rule.active).length;
+    $("#accountRuleSummary").textContent = `${state.accountRules.length.toLocaleString("ko-KR")}개 규칙 · ${activeCount.toLocaleString("ko-KR")}개 사용`;
+    tbody.innerHTML = state.accountRules.length
+      ? state.accountRules
+          .map(
+            (rule) => `
+              <tr>
+                <td><span class="status-pill ${rule.active ? "status-ok" : "status-warning"}">${rule.active ? "사용" : "중지"}</span></td>
+                <td>${escapeHtml(ACCOUNT_RULE_FIELDS[rule.field] || rule.field)}</td>
+                <td>${escapeHtml(rule.keyword)}</td>
+                <td>${escapeHtml(ACCOUNT_CATEGORIES[rule.category] || rule.category)}</td>
+                <td class="wrap">${escapeHtml(rule.memo || "-")}</td>
+                <td>
+                  <div class="row-actions">
+                    <button class="icon-button" type="button" data-toggle-account-rule="${escapeHtml(rule.id)}">
+                      <i data-lucide="${rule.active ? "pause" : "play"}"></i><span>${rule.active ? "중지" : "사용"}</span>
+                    </button>
+                    <button class="icon-button danger-button" type="button" data-delete-account-rule="${escapeHtml(rule.id)}">
+                      <i data-lucide="trash-2"></i><span>삭제</span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            `,
+          )
+          .join("")
+      : emptyRow(6, "등록된 거래처 분류 규칙이 없습니다.");
+
+    $$("[data-toggle-account-rule]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        if (!requireAdminWrite("거래처 분류 변경")) return;
+        const rule = state.accountRules.find((item) => item.id === button.dataset.toggleAccountRule);
+        if (!rule) return;
+        rule.active = !rule.active;
+        await persistAccountRules();
+        refreshAll();
+      });
+    });
+
+    $$("[data-delete-account-rule]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        if (!requireAdminWrite("거래처 분류 삭제")) return;
+        const ruleId = button.dataset.deleteAccountRule;
+        state.accountRules = state.accountRules.filter((item) => item.id !== ruleId);
+        await deleteAccountRuleFromSupabase(ruleId);
+        await persistAccountRules();
+        refreshAll();
+      });
+    });
+  }
+
   function renderReport() {
     const reportType = $("#reportTypeSelect")?.value || "price";
     const filtered = getFilteredRecords();
@@ -2059,6 +2219,65 @@
     saveJson(STORAGE_KEYS.products, state.products);
   }
 
+  async function persistAccountRules() {
+    state.accountRules = normalizeAccountRules(state.accountRules);
+    saveJson(STORAGE_KEYS.accountRules, state.accountRules);
+    if (!state.supabaseClient) return;
+    try {
+      const payload = state.accountRules.map((rule) => ({
+        id: rule.id,
+        match_field: rule.field,
+        keyword: rule.keyword,
+        category: rule.category,
+        memo: rule.memo || "",
+        active: Boolean(rule.active),
+        updated_at: new Date().toISOString(),
+      }));
+      const { error } = await state.supabaseClient.from("account_classification_rules").upsert(payload, { onConflict: "id" });
+      if (error) throw error;
+    } catch (error) {
+      toast("로컬에는 저장했지만 온라인 분류 규칙 저장은 실패했습니다. Supabase 테이블을 확인해 주세요.");
+    }
+  }
+
+  async function loadAccountRulesFromSupabase(options = {}) {
+    if (!state.supabaseClient) return;
+    try {
+      const { data, error } = await state.supabaseClient
+        .from("account_classification_rules")
+        .select("*")
+        .order("updated_at", { ascending: false });
+      if (error) throw error;
+      if (Array.isArray(data) && data.length) {
+        state.accountRules = normalizeAccountRules(data.map(accountRuleFromSupabase));
+        saveJson(STORAGE_KEYS.accountRules, state.accountRules);
+      }
+    } catch (error) {
+      if (!options.silent) toast("온라인 거래처 분류 규칙을 불러오지 못했습니다.");
+    }
+  }
+
+  function accountRuleFromSupabase(row) {
+    return {
+      id: row.id,
+      field: row.match_field,
+      keyword: row.keyword,
+      category: row.category,
+      memo: row.memo,
+      active: row.active,
+    };
+  }
+
+  async function deleteAccountRuleFromSupabase(ruleId) {
+    if (!state.supabaseClient || !ruleId) return;
+    try {
+      const { error } = await state.supabaseClient.from("account_classification_rules").delete().eq("id", ruleId);
+      if (error) throw error;
+    } catch (error) {
+      toast("로컬에서는 삭제했지만 온라인 분류 규칙 삭제는 실패했습니다.");
+    }
+  }
+
   function getPriorityExpiryRecords(records = getScopedRecords()) {
     return records
       .filter((record) => {
@@ -2314,19 +2533,46 @@
   }
 
   function isPrepaidPriorityTarget(record) {
-    if (isDealerManagedRecord(record)) return false;
+    const category = classifyAccountRecord(record);
+    if (category === "dealer" || category === "other") return false;
+    if (category === "direct" || category === "agency") return true;
     const text = normalizeSearchText([record.hospital, record.relationGroup, record.memo].join(" "));
     return PREPAID_PRIORITY_KEYWORDS.some((keyword) => text.includes(normalizeSearchText(keyword)));
   }
 
   function isMainAccountRecord(record) {
-    if (isDealerManagedRecord(record)) return false;
+    const category = classifyAccountRecord(record);
+    if (category === "dealer" || category === "other") return false;
+    if (category === "direct" || category === "agency") return true;
     const text = normalizeSearchText([record.hospital, record.relationGroup, record.memo].join(" "));
     return MAIN_ACCOUNT_KEYWORDS.some((keyword) => text.includes(normalizeSearchText(keyword)));
   }
 
   function isDealerManagedRecord(record) {
     return normalizeSearchText(record.managerName).includes("이미경");
+  }
+
+  function classifyAccountRecord(record) {
+    const matchedRule = findAccountRule(record);
+    if (matchedRule) return matchedRule.category;
+    if (isDealerManagedRecord(record)) return "dealer";
+    return "";
+  }
+
+  function findAccountRule(record) {
+    return state.accountRules.find((rule) => {
+      if (!rule.active || !rule.keyword) return false;
+      const keyword = normalizeSearchText(rule.keyword);
+      if (!keyword) return false;
+      return getAccountRuleTarget(record, rule.field).includes(keyword);
+    });
+  }
+
+  function getAccountRuleTarget(record, field) {
+    if (field === "manager") return normalizeSearchText(record.managerName);
+    if (field === "memo") return normalizeSearchText(record.memo);
+    if (field === "any") return normalizeSearchText(recordSearchText(record));
+    return normalizeSearchText([record.hospital, record.relationGroup].join(" "));
   }
 
   function matchesHospitalSearch(record, rawQuery, selectedProduct = "") {

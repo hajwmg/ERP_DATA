@@ -112,3 +112,46 @@ create policy "price_standards_update"
   for update
   using (true)
   with check (true);
+
+create table if not exists public.account_classification_rules (
+  id text primary key,
+  match_field text not null default 'account',
+  keyword text not null,
+  category text not null default 'other',
+  memo text default '',
+  active boolean not null default true,
+  updated_at timestamptz default now()
+);
+
+create index if not exists account_classification_rules_keyword_idx
+  on public.account_classification_rules (keyword);
+
+create index if not exists account_classification_rules_updated_at_idx
+  on public.account_classification_rules (updated_at);
+
+alter table public.account_classification_rules enable row level security;
+
+drop policy if exists "account_classification_rules_select" on public.account_classification_rules;
+create policy "account_classification_rules_select"
+  on public.account_classification_rules
+  for select
+  using (true);
+
+drop policy if exists "account_classification_rules_insert" on public.account_classification_rules;
+create policy "account_classification_rules_insert"
+  on public.account_classification_rules
+  for insert
+  with check (true);
+
+drop policy if exists "account_classification_rules_update" on public.account_classification_rules;
+create policy "account_classification_rules_update"
+  on public.account_classification_rules
+  for update
+  using (true)
+  with check (true);
+
+drop policy if exists "account_classification_rules_delete" on public.account_classification_rules;
+create policy "account_classification_rules_delete"
+  on public.account_classification_rules
+  for delete
+  using (true);

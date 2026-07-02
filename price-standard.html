@@ -311,6 +311,7 @@
         const SUPABASE_KEY = "sb_publishable_4BVX7XCBUC3n8rgU-keZUg_A7mUvwkZ";
         const ADMIN_PASSWORD = "01053065802";
         const LOCAL_STANDARD_KEY = "delivery-expiry-price-standards-v1";
+        const LOCAL_ACCOUNT_RULE_KEY = "delivery-expiry-account-rules-v1";
         const PRODUCTS = [
           { name: "나비밴드", type: "비급여", sensitive: true },
           { name: "나비픽스", type: "비급여", sensitive: true },
@@ -321,8 +322,15 @@
         ];
         const PRODUCT_NAMES = PRODUCTS.map((item) => item.name);
         const DIRECT_RE = /(대학|대학교|대학병원|의료원|세브란스|삼성서울병원|서울아산병원|강릉아산병원|분당서울|서울대병원|보라매병원|성모병원|성빈센트|가톨릭|백병원|을지병원|순천향|건국대병원|아주대|원광대|충남대)/;
-        const AGENCY_RE = /(케어캠프|에비슨|안연케어|스마트엠케어|이지메디컴|공급망관리|세브란스 공급망|메디굿파트너스|토탈메디칼|오륜메디칼|동하메디칼|아산사회재단|삼성의료원|의료용품|위더스메디|간납)/;
+        const AGENCY_RE = /(케어캠프|에비슨|안연케어|스마트엠케어|이지메디컴|공급망관리|세브란스 공급망|메디굿파트너스|토탈메디칼|오륜메디칼|동하메디칼|오페라살루따리스|아산사회재단|삼성의료원|의료용품|위더스메디|간납)/;
         const INVALID_RE = /(샘플|무상|데모|테스트)/i;
+        const DEFAULT_ACCOUNT_RULES = [
+          { id: "rule-manager-lee-mi-kyung", field: "manager", keyword: "이미경", category: "dealer", memo: "이미경 담당 건은 대리점으로 분류", active: true },
+          { id: "rule-agency-dongha", field: "account", keyword: "동하메디칼", category: "agency", memo: "간납사", active: true },
+          { id: "rule-agency-opera", field: "account", keyword: "오페라살루따리스", category: "agency", memo: "간납사", active: true },
+          { id: "rule-direct-st-vincent", field: "account", keyword: "성빈센트", category: "direct", memo: "대학병원", active: true },
+          { id: "rule-direct-catholic", field: "account", keyword: "가톨릭", category: "direct", memo: "대학병원 계열", active: true },
+        ];
         const money = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 });
         const number = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 });
         const state = {
@@ -330,6 +338,7 @@
           rows: [],
           stats: [],
           standards: {},
+          accountRules: [],
           unlocked: false,
           tableReady: true,
           accountProduct: "all",
@@ -342,6 +351,7 @@
         function init() {
           bindControls();
           loadLocalStandards();
+          loadLocalAccountRules();
           refreshData();
           lucide?.createIcons();
         }
@@ -389,6 +399,7 @@
           setStatus("온라인 데이터를 불러오는 중", false);
           try {
             await loadOnlineStandards();
+            await loadOnlineAccountRules();
             const rows = [];
             for (let offset = 0; ; offset += 1000) {
               const params = new URLSearchParams({
@@ -441,6 +452,27 @@
           syncFeeInput();
         }
 
+        async function loadOnlineAccountRules() {
+          const params = new URLSearchParams({ select: "id,match_field,keyword,category,memo,active,updated_at" });
+          const response = await fetch(`${SUPABASE_URL}/rest/v1/account_classification_rules?${params}`, {
+            headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+          });
+          if (response.status === 404 || response.status === 400) return;
+          if (!response.ok) throw new Error(`거래처 분류 응답 오류 ${response.status}`);
+          const rows = await response.json();
+          if (rows.length) {
+            state.accountRules = normalizeAccountRules(rows.map((row) => ({
+              id: row.id,
+              field: row.match_field,
+              keyword: row.keyword,
+              category: row.category,
+              memo: row.memo,
+              active: row.active,
+            })));
+            localStorage.setItem(LOCAL_ACCOUNT_RULE_KEY, JSON.stringify(state.accountRules));
+          }
+        }
+
         function loadLocalStandards() {
           const saved = JSON.parse(localStorage.getItem(LOCAL_STANDARD_KEY) || "{}");
           PRODUCTS.forEach((product) => {
@@ -452,6 +484,14 @@
             };
           });
           syncFeeInput();
+        }
+
+        function loadLocalAccountRules() {
+          try {
+            state.accountRules = normalizeAccountRules(JSON.parse(localStorage.getItem(LOCAL_ACCOUNT_RULE_KEY) || "[]"));
+          } catch (error) {
+            state.accountRules = normalizeAccountRules(DEFAULT_ACCOUNT_RULES);
+          }
         }
 
         async function saveStandards() {
@@ -654,10 +694,41 @@
 
         function classifyAccount(row) {
           const account = typeof row === "string" ? row : row.account;
+          const rule = findAccountRule(row);
+          if (rule) return rule.category;
           if (isDealerManaged(row)) return "dealer";
           if (AGENCY_RE.test(account)) return "agency";
           if (DIRECT_RE.test(account)) return "direct";
           return "other";
+        }
+
+        function findAccountRule(row) {
+          return state.accountRules.find((rule) => {
+            if (!rule.active || !rule.keyword) return false;
+            return getAccountRuleTarget(row, rule.field).includes(normalizeSearchText(rule.keyword));
+          });
+        }
+
+        function getAccountRuleTarget(row, field) {
+          if (typeof row === "string") return normalizeSearchText(row);
+          if (field === "manager") return normalizeSearchText(row.manager);
+          if (field === "memo") return normalizeSearchText(row.memo);
+          if (field === "any") return normalizeSearchText([row.account, row.manager, row.memo].join(" "));
+          return normalizeSearchText(row.account);
+        }
+
+        function normalizeAccountRules(rules) {
+          const source = Array.isArray(rules) && rules.length ? rules : DEFAULT_ACCOUNT_RULES;
+          return source
+            .map((rule) => ({
+              id: rule.id || `${Date.now()}-${Math.random()}`,
+              field: ["account", "manager", "memo", "any"].includes(rule.field) ? rule.field : "account",
+              keyword: String(rule.keyword || "").trim(),
+              category: ["direct", "agency", "dealer", "other"].includes(rule.category) ? rule.category : "other",
+              memo: String(rule.memo || "").trim(),
+              active: rule.active !== false,
+            }))
+            .filter((rule) => rule.keyword);
         }
 
         function isDealerManaged(row) {
